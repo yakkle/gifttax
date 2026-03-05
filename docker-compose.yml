@@ -1,0 +1,15 @@
+services:
+  stocktax:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./frontend:/app/frontend:ro
+      - stocktax-data:/tmp/stocktax
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    restart: unless-stopped
+
+volumes:
+  stocktax-data:

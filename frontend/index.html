@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockTax - 해외주식 증여 금액 계산기</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>StockTax</h1>
+            <p>해외주식 증여 금액 계산기</p>
+        </header>
+
+        <main>
+            <form id="gift-form">
+                <div class="form-group">
+                    <label for="gift-date">증여일</label>
+                    <input type="date" id="gift-date" name="gift-date" required>
+                </div>
+
+                <div class="form-group">
+                    <label>증여 주식</label>
+                    <div id="stocks-container">
+                        <div class="stock-row">
+                            <input type="text" name="ticker" placeholder="종목코드 (예: AAPL)" required>
+                            <input type="number" name="qty" placeholder="수량" min="1" required>
+                            <select name="currency">
+                                <option value="USD" selected>USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="JPY">JPY</option>
+                                <option value="GBP">GBP</option>
+                            </select>
+                            <button type="button" class="btn-remove" onclick="removeStock(this)">×</button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-add" onclick="addStock()">+ 주식 추가</button>
+                </div>
+
+                <button type="submit" class="btn-submit">계산하기</button>
+            </form>
+
+            <div id="result" class="hidden">
+                <h2>계산 결과</h2>
+                <div id="result-content"></div>
+
+                <div class="download-buttons">
+                    <button id="btn-excel" class="btn-download">엑셀 다운로드</button>
+                    <button id="btn-pdf" class="btn-download">PDF 다운로드</button>
+                    <a id="btn-smbs" class="btn-download btn-smbs" href="#" target="_blank" rel="noopener">smbs.biz에서 환율 출력</a>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
