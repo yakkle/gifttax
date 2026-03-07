@@ -33,10 +33,10 @@
 
 ```bash
 # 설치
-pip install -e .
+uv pip install .
 
 # 실행
-uvicorn stocktax.main:app --reload
+uvicorn backend.main:app --reload
 
 # 브라우저에서 열기
 open http://localhost:8000
@@ -59,13 +59,13 @@ docker-compose logs -f
 
 ```bash
 # 테스트
-pytest tests/ -v
+pytest backend/tests/ -v
 
 # 린트
 ruff check .
 
 # 타입 체크
-mypy stocktax/
+mypy backend/
 ```
 
 ## API 사용법
@@ -108,23 +108,29 @@ curl -X POST http://localhost:8000/api/calculate \
 ## 프로젝트 구조
 
 ```
-stocktax/
-├── stocktax/           # 메인 패키지
-│   ├── main.py         # FastAPI 앱
-│   ├── models/         # Pydantic 모델
-│   └── services/
-│       ├── calculator.py       # 계산 로직
-│       ├── scraper/             # 웹 크롤러
-│       │   ├── investing.py
-│       │   └── smbs.py
-│       └── generator/           # 파일 생성기
-│           ├── excel.py
-│           └── pdf.py
+gifttax/
 ├── frontend/           # 프론트엔드
 │   ├── index.html
 │   ├── style.css
 │   └── app.js
-├── tests/              # 테스트
+├── backend/            # 백엔드
+│   ├── main.py            # FastAPI 앱
+│   ├── api/
+│   │   └── router.py          # API 라우터
+│   ├── services/
+│   │   └── calculator.py      # 계산 로직
+│   ├── tax/                   # 세금 계산 (예정)
+│   ├── integrations/
+│   │   └── scraper/           # 웹 크롤러
+│   │       ├── investing.py
+│   │       ├── smbs.py
+│   │       └── yahoo.py
+│   ├── pdf/
+│   │   └── generator/         # 파일 생성기
+│   │       ├── excel.py
+│   │       └── pdf.py
+│   ├── models/        # Pydantic 모델
+│   └── tests/         # 테스트
 ├── Dockerfile
 ├── docker-compose.yml
 └── pyproject.toml

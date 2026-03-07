@@ -52,4 +52,5 @@ class GiftCalculationResult(BaseModel):
     gift_date: date
     stocks: list[StockGiftResult]
     total_gift_amount_krw: Decimal = Field(..., description="Total gift amount in KRW")
+    estimated_tax: Decimal = Field(default=Decimal(0), description="Estimated gift tax in KRW")
     exchange_rate_date: date

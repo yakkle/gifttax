@@ -3,14 +3,15 @@ from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 
-from stocktax.models import (
+from backend.models import (
     GiftCalculationInput,
     GiftCalculationResult,
     PriceDataPoint,
     StockGiftResult,
 )
-from stocktax.services.scraper import smbs
-from stocktax.services.scraper import yahoo as scraper
+from backend.integrations.scraper import smbs
+from backend.integrations.scraper import yahoo as scraper
+from backend.tax import engine as tax_engine
 
 
 def calculate_gift_amount(
@@ -75,6 +76,15 @@ def calculate_gift_amount(
     )
 
 
+def get_exchange_rate_pdf_period(actual_rate_date: date) -> tuple[date, date]:
+    """환율 PDF 조회 기간 반환.
+
+    실제 환율 적용일(actual_rate_date) 기준 전후 1일.
+    actual_rate_date는 증여일 직전영업일로, 주말/공휴일을 건너뛴 실제 환율 데이터가 존재하는 날짜다.
+    """
+    return actual_rate_date - timedelta(days=1), actual_rate_date + timedelta(days=1)
+
+
 def calculate_total_gift(
     input_data: GiftCalculationInput,
 ) -> GiftCalculationResult:
@@ -94,9 +104,12 @@ def calculate_total_gift(
         if actual_exchange_rate_date is None:
             actual_exchange_rate_date = result.exchange_rate_date
 
+    estimated_tax = tax_engine.calculate_gift_tax(total_amount)
+
     return GiftCalculationResult(
         gift_date=input_data.gift_date,
         stocks=results,
         total_gift_amount_krw=total_amount,
+        estimated_tax=estimated_tax,
         exchange_rate_date=actual_exchange_rate_date or input_data.gift_date,
     )

@@ -5,8 +5,9 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from stocktax.main import app
-from stocktax.models import GiftCalculationInput, StockInput
+from backend.main import app
+from integrations.scraper.yahoo import InvalidTickerError
+from models import GiftCalculationInput, StockInput
 
 client = TestClient(app)
 
@@ -41,8 +42,8 @@ class TestAPI:
         }
 
         with (
-            patch("stocktax.services.scraper.yahoo.get_stock_prices") as mock_prices,
-            patch("stocktax.services.scraper.smbs.get_exchange_rate") as mock_rate,
+            patch("services.calculator.scraper.get_stock_prices") as mock_prices,
+            patch("services.calculator.smbs.get_exchange_rate") as mock_rate,
         ):
             mock_prices.return_value = [
                 (date(2025, 9, 7), Decimal("150.00")),
@@ -73,11 +74,11 @@ class TestAPI:
 
 class TestCalculator:
     def test_calculate_gift_amount(self):
-        from stocktax.services.calculator import calculate_gift_amount
+        from services.calculator import calculate_gift_amount
 
         with (
-            patch("stocktax.services.scraper.yahoo.get_stock_prices") as mock_prices,
-            patch("stocktax.services.scraper.smbs.get_exchange_rate") as mock_rate,
+            patch("services.calculator.scraper.get_stock_prices") as mock_prices,
+            patch("services.calculator.smbs.get_exchange_rate") as mock_rate,
         ):
             mock_prices.return_value = [
                 (date(2025, 9, 7), Decimal("100.00")),
@@ -102,16 +103,39 @@ class TestCalculator:
 
 class TestScraper:
     def test_parse_investing_date(self):
-        from stocktax.services.scraper.investing import parse_investing_date
+        from integrations.scraper.investing import parse_investing_date
 
         result = parse_investing_date("Nov 6, 2025")
         assert result == date(2025, 11, 6)
 
     def test_datetime_str_to_date(self):
-        from stocktax.services.scraper.smbs import datetime_str_to_date
+        from integrations.scraper.smbs import datetime_str_to_date
 
         result = datetime_str_to_date("2025.11.06")
         assert result == date(2025, 11, 6)
+
+
+class TestTaxEngine:
+    def test_calculate_gift_tax_returns_zero(self):
+        """현재 TaxEngine은 stub으로 0을 반환한다."""
+        from tax.engine import calculate_gift_tax
+
+        result = calculate_gift_tax(Decimal("2600000"))
+        assert result == Decimal("0")
+
+    def test_calculate_gift_tax_zero_amount(self):
+        """증여금액이 0이어도 0을 반환한다."""
+        from tax.engine import calculate_gift_tax
+
+        result = calculate_gift_tax(Decimal("0"))
+        assert result == Decimal("0")
+
+    def test_calculate_gift_tax_large_amount(self):
+        """큰 금액에도 현재는 0을 반환한다."""
+        from tax.engine import calculate_gift_tax
+
+        result = calculate_gift_tax(Decimal("1000000000"))
+        assert result == Decimal("0")
 
 
 class TestInvalidTicker:
@@ -126,7 +150,9 @@ class TestInvalidTicker:
             ],
         }
 
-        response = client.post("/api/calculate", json=payload)
+        with patch("services.calculator.scraper.get_stock_prices") as mock_prices:
+            mock_prices.side_effect = InvalidTickerError("종목 코드를 찾을 수 없습니다: INVALID123")
+            response = client.post("/api/calculate", json=payload)
 
         assert response.status_code == 400
         assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
@@ -140,7 +166,9 @@ class TestInvalidTicker:
             ],
         }
 
-        response = client.post("/api/calculate", json=payload)
+        with patch("services.calculator.scraper.get_stock_prices") as mock_prices:
+            mock_prices.side_effect = InvalidTickerError("종목 코드를 찾을 수 없습니다: APPL")
+            response = client.post("/api/calculate", json=payload)
 
         assert response.status_code == 400
         assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
@@ -154,7 +182,9 @@ class TestInvalidTicker:
             ],
         }
 
-        response = client.post("/api/generate-excel", json=payload)
+        with patch("services.calculator.scraper.get_stock_prices") as mock_prices:
+            mock_prices.side_effect = InvalidTickerError("종목 코드를 찾을 수 없습니다: NOTEXIST")
+            response = client.post("/api/generate-excel", json=payload)
 
         assert response.status_code == 400
         assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
@@ -168,7 +198,9 @@ class TestInvalidTicker:
             ],
         }
 
-        response = client.post("/api/generate-pdf", json=payload)
+        with patch("services.calculator.scraper.get_stock_prices") as mock_prices:
+            mock_prices.side_effect = InvalidTickerError("종목 코드를 찾을 수 없습니다: FAKETICKER")
+            response = client.post("/api/generate-pdf", json=payload)
 
         assert response.status_code == 400
         assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]

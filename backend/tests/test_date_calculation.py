@@ -5,9 +5,9 @@ from unittest.mock import patch
 import pytest
 from dateutil.relativedelta import relativedelta
 
-from stocktax.services.calculator import calculate_gift_amount
-from stocktax.services.scraper.yahoo import get_stock_prices
-from stocktax.services.scraper.smbs import get_exchange_rate, get_exchange_rates
+from services.calculator import calculate_gift_amount
+from integrations.scraper.yahoo import get_stock_prices
+from integrations.scraper.smbs import get_exchange_rate, get_exchange_rates
 
 
 class TestDateCalculation:
@@ -56,8 +56,8 @@ class TestCalculatorWithMock:
     def test_calculate_gift_amount_with_mock(self):
         """Mock을 사용한 계산 테스트"""
         with (
-            patch("stocktax.services.scraper.yahoo.get_stock_prices") as mock_prices,
-            patch("stocktax.services.scraper.smbs.get_exchange_rate") as mock_rate,
+            patch("services.calculator.scraper.get_stock_prices") as mock_prices,
+            patch("services.calculator.smbs.get_exchange_rate") as mock_rate,
         ):
             mock_prices.return_value = [
                 (date(2025, 9, 8), Decimal("100.00")),
@@ -90,7 +90,7 @@ class TestScraperFunctions:
         <set label='25.11.07' value='1448.0' />
         </chart>"""
 
-        from stocktax.services.scraper.smbs import parse_xml_response
+        from integrations.scraper.smbs import parse_xml_response
 
         result = parse_xml_response(xml_data)
 
