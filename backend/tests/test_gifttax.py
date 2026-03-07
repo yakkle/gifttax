@@ -173,8 +173,8 @@ class TestInvalidTicker:
         assert response.status_code == 400
         assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
 
-    def test_invalid_ticker_generate_excel(self):
-        """엑셀 생성 시 존재하지 않는 종목 코드 입력 시 400 에러 반환"""
+    def test_invalid_ticker_generate_gift_pdf(self):
+        """계산 증빙 PDF 생성 시 존재하지 않는 종목 코드 입력 시 400 에러 반환"""
         payload = {
             "gift_date": "2025-11-06",
             "stocks": [
@@ -184,7 +184,7 @@ class TestInvalidTicker:
 
         with patch("services.calculator.scraper.get_stock_prices") as mock_prices:
             mock_prices.side_effect = InvalidTickerError("종목 코드를 찾을 수 없습니다: NOTEXIST")
-            response = client.post("/api/generate-excel", json=payload)
+            response = client.post("/api/generate-gift-pdf", json=payload)
 
         assert response.status_code == 400
         assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]

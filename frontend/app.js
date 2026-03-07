@@ -165,7 +165,7 @@ function displayResult(data) {
     resultDiv.classList.remove("hidden");
 }
 
-async function generateExcel(formData) {
+async function generateGiftPdf(formData) {
     const giftDate = formData.get("gift-date");
     const stockRows = document.querySelectorAll(".stock-row");
 
@@ -185,7 +185,7 @@ async function generateExcel(formData) {
         stocks: stocks,
     };
 
-    const response = await fetch(`${API_BASE}/api/generate-excel`, {
+    const response = await fetch(`${API_BASE}/api/generate-gift-pdf`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -195,7 +195,7 @@ async function generateExcel(formData) {
 
     if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || "엑셀 생성 중 오류가 발생했습니다.");
+        throw new Error(error.detail || "계산 증빙 PDF 생성 중 오류가 발생했습니다.");
     }
 
     return response.json();
@@ -264,16 +264,16 @@ document.getElementById("gift-form").addEventListener("submit", async (e) => {
         const data = await calculateGift(formData);
         displayResult(data);
 
-        document.getElementById("btn-excel").onclick = async () => {
+        document.getElementById("btn-gift-pdf").onclick = async () => {
             try {
-                const excelResult = await generateExcel(formData);
-                downloadFile(excelResult.file_id, excelResult.filename);
+                const giftPdfResult = await generateGiftPdf(formData);
+                downloadFile(giftPdfResult.file_id, giftPdfResult.filename);
             } catch (error) {
                 alert(error.message);
             }
         };
 
-        document.getElementById("btn-pdf").onclick = async () => {
+        document.getElementById("btn-rate-pdf").onclick = async () => {
             try {
                 const pdfResult = await generatePdf(formData);
                 downloadFile(pdfResult.file_id, pdfResult.filename);
