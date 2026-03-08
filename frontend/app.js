@@ -165,81 +165,20 @@ function displayResult(data) {
     resultDiv.classList.remove("hidden");
 }
 
-async function generateGiftPdf(formData) {
-    const giftDate = formData.get("gift-date");
-    const stockRows = document.querySelectorAll(".stock-row");
-
-    const stocks = [];
-    stockRows.forEach((row) => {
-        const ticker = row.querySelector('input[name="ticker"]').value.toUpperCase();
-        const qty = parseInt(row.querySelector('input[name="qty"]').value);
-        const currency = row.querySelector('select[name="currency"]').value;
-
-        if (ticker && qty) {
-            stocks.push({ ticker, qty, currency });
-        }
-    });
-
-    const payload = {
-        gift_date: giftDate,
-        stocks: stocks,
-    };
-
-    const response = await fetch(`${API_BASE}/api/generate-gift-pdf`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || "계산 증빙 PDF 생성 중 오류가 발생했습니다.");
-    }
-
-    return response.json();
+function downloadFile(fileId) {
+    window.location.href = `${API_BASE}/api/download/${fileId}`;
 }
 
-async function generatePdf(formData) {
-    const giftDate = formData.get("gift-date");
-    const stockRows = document.querySelectorAll(".stock-row");
-
-    const stocks = [];
-    stockRows.forEach((row) => {
-        const ticker = row.querySelector('input[name="ticker"]').value.toUpperCase();
-        const qty = parseInt(row.querySelector('input[name="qty"]').value);
-        const currency = row.querySelector('select[name="currency"]').value;
-
-        if (ticker && qty) {
-            stocks.push({ ticker, qty, currency });
-        }
-    });
-
-    const payload = {
-        gift_date: giftDate,
-        stocks: stocks,
-    };
-
-    const response = await fetch(`${API_BASE}/api/generate-pdf`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || "PDF 생성 중 오류가 발생했습니다.");
-    }
-
-    return response.json();
+async function deletePreviousFiles(giftPdfFileId, ratePdfFileId) {
+    /**이전 계산의 미다운로드 PDF 파일을 서버에서 정리한다. 실패해도 무시한다. */
+    const ids = [giftPdfFileId, ratePdfFileId].filter(Boolean);
+    await Promise.allSettled(
+        ids.map((id) => fetch(`${API_BASE}/api/download/${id}`, { method: "DELETE" }))
+    );
 }
 
-function downloadFile(fileId, filename) {
-    window.location.href = `${API_BASE}/api/download/${fileId}?filename=${filename}`;
-}
+let previousGiftPdfFileId = null;
+let previousRatePdfFileId = null;
 
 document.getElementById("gift-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -261,24 +200,28 @@ document.getElementById("gift-form").addEventListener("submit", async (e) => {
     const formData = new FormData(form);
 
     try {
+        // 이전 계산의 미다운로드 파일 정리
+        await deletePreviousFiles(previousGiftPdfFileId, previousRatePdfFileId);
+        previousGiftPdfFileId = null;
+        previousRatePdfFileId = null;
+
         const data = await calculateGift(formData);
         displayResult(data);
 
-        document.getElementById("btn-gift-pdf").onclick = async () => {
-            try {
-                const giftPdfResult = await generateGiftPdf(formData);
-                downloadFile(giftPdfResult.file_id, giftPdfResult.filename);
-            } catch (error) {
-                alert(error.message);
+        previousGiftPdfFileId = data.gift_pdf_file_id;
+        previousRatePdfFileId = data.rate_pdf_file_id;
+
+        document.getElementById("btn-gift-pdf").onclick = () => {
+            if (data.gift_pdf_file_id) {
+                downloadFile(data.gift_pdf_file_id);
+                previousGiftPdfFileId = null;
             }
         };
 
-        document.getElementById("btn-rate-pdf").onclick = async () => {
-            try {
-                const pdfResult = await generatePdf(formData);
-                downloadFile(pdfResult.file_id, pdfResult.filename);
-            } catch (error) {
-                alert(error.message);
+        document.getElementById("btn-rate-pdf").onclick = () => {
+            if (data.rate_pdf_file_id) {
+                downloadFile(data.rate_pdf_file_id);
+                previousRatePdfFileId = null;
             }
         };
 

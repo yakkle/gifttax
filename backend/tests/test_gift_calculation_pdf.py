@@ -65,7 +65,7 @@ def _make_stock_result(
 def _make_result(stocks: list[StockGiftResult] | None = None) -> GiftCalculationResult:
     if stocks is None:
         stocks = [_make_stock_result()]
-    total = sum(s.gift_amount_krw for s in stocks)
+    total = sum((s.gift_amount_krw for s in stocks), Decimal("0"))
     return GiftCalculationResult(
         gift_date=date(2024, 5, 1),
         stocks=stocks,
@@ -262,12 +262,14 @@ class TestGeneratePdfGiftCalculation:
 
 
 # ---------------------------------------------------------------------------
-# API 엔드포인트 /generate-gift-pdf
+# API 엔드포인트 /calculate — PDF file_id 포함 여부
 # ---------------------------------------------------------------------------
 
 
-class TestGenerateGiftPdfEndpoint:
-    def test_generate_gift_pdf_returns_file_id(self):
+class TestCalculateEndpointPdfFileIds:
+    """계산하기 호출 시 PDF가 미리 생성되어 file_id가 응답에 포함되는지 검증한다."""
+
+    def test_calculate_returns_gift_pdf_file_id(self):
         from fastapi.testclient import TestClient
         from backend.main import app
 
@@ -292,16 +294,16 @@ class TestGenerateGiftPdfEndpoint:
                 (date(2024, 4, 30), Decimal("1300.00")),
             ]
 
-            response = client.post("/api/generate-gift-pdf", json=payload)
+            response = client.post("/api/calculate", json=payload)
 
         assert response.status_code == 200
         data = response.json()
-        assert "file_id" in data
-        assert "filename" in data
-        assert data["filename"].startswith("gift_calculation_")
-        assert data["filename"].endswith(".pdf")
+        assert "gift_pdf_file_id" in data
+        assert data["gift_pdf_file_id"] is not None
+        assert "rate_pdf_file_id" in data
+        assert data["rate_pdf_file_id"] is not None
 
-    def test_generate_gift_pdf_invalid_ticker_returns_400(self):
+    def test_calculate_invalid_ticker_returns_400(self):
         from fastapi.testclient import TestClient
         from backend.main import app
         from integrations.scraper.yahoo import InvalidTickerError
@@ -314,16 +316,16 @@ class TestGenerateGiftPdfEndpoint:
 
         with patch("services.calculator.scraper.get_stock_prices") as mock_prices:
             mock_prices.side_effect = InvalidTickerError("종목 코드를 찾을 수 없습니다: NOTEXIST")
-            response = client.post("/api/generate-gift-pdf", json=payload)
+            response = client.post("/api/calculate", json=payload)
 
         assert response.status_code == 400
         assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
 
-    def test_generate_gift_pdf_missing_stocks_returns_422(self):
+    def test_calculate_missing_stocks_returns_422(self):
         from fastapi.testclient import TestClient
         from backend.main import app
 
         client = TestClient(app)
         payload = {"gift_date": "2024-05-01", "stocks": []}
-        response = client.post("/api/generate-gift-pdf", json=payload)
+        response = client.post("/api/calculate", json=payload)
         assert response.status_code == 422

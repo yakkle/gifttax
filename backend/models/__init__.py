@@ -54,3 +54,5 @@ class GiftCalculationResult(BaseModel):
     total_gift_amount_krw: Decimal = Field(..., description="Total gift amount in KRW")
     estimated_tax: Decimal = Field(default=Decimal(0), description="Estimated gift tax in KRW")
     exchange_rate_date: date
+    gift_pdf_file_id: str | None = Field(default=None, description="계산 증빙 PDF file ID")
+    rate_pdf_file_id: str | None = Field(default=None, description="매매기준환율 PDF file ID")
