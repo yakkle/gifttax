@@ -3,11 +3,13 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+from reportlab.platypus import LongTable, Table, TableStyle
 
 from models import GiftCalculationResult, StockGiftResult
 
@@ -31,13 +33,22 @@ PAGE_WIDTH, PAGE_HEIGHT = A4
 CONTENT_WIDTH = PAGE_WIDTH - LEFT_MARGIN - RIGHT_MARGIN
 BOTTOM_MARGIN = 25 * mm
 
-# 테이블 열 위치
-TABLE_DATE_X = LEFT_MARGIN
-TABLE_PRICE_X = LEFT_MARGIN + 55 * mm
-
 # 링크 색상 (파란색)
 LINK_COLOR = (0, 0, 0.8)
 NORMAL_COLOR = (0, 0, 0)
+
+# 테이블 색상
+TABLE_HEADER_BG = colors.HexColor("#2C3E50")  # 주가 테이블 헤더 배경 (남색)
+TABLE_HEADER_FG = colors.white  # 주가 테이블 헤더 텍스트
+TABLE_ROW_ALT_BG = colors.HexColor("#F5F5F5")  # 짝수 행 배경 (연회색)
+TABLE_GRID_COLOR = colors.HexColor("#CCCCCC")  # 테두리 색상
+
+# 키-값 정보 테이블 색상
+INFO_KEY_BG = colors.HexColor("#EEEEEE")  # 키 컬럼 배경
+
+# 계산식 박스 색상
+FORMULA_BOX_BG = colors.HexColor("#EFF8FF")  # 연한 청색 배경
+FORMULA_BOX_BORDER = colors.HexColor("#4A90D9")  # 테두리 색상
 
 
 def _register_korean_font() -> bool:
@@ -161,57 +172,139 @@ def _draw_sub_heading(ps: _PageState, text: str) -> None:
     ps.move(6 * mm)
 
 
-def _draw_key_value(ps: _PageState, key: str, value: str, indent: float = 5 * mm) -> None:
-    """들여쓰기된 키-값 행 출력."""
-    ps.ensure_space(6 * mm)
-    c = ps.c
-    c.setFont(_font(), 10)
-    c.setFillColorRGB(*NORMAL_COLOR)
-    c.drawString(LEFT_MARGIN + indent, ps.y, key)
-    c.drawString(LEFT_MARGIN + indent + 38 * mm, ps.y, value)
-    ps.move(5.5 * mm)
-
-
 def _draw_price_table(ps: _PageState, stock: StockGiftResult) -> None:
-    """종가 데이터 테이블 출력 (소수 둘째 자리 반올림)."""
+    """종가 데이터 테이블 출력 — LongTable + split()으로 페이지 분할 처리."""
     c = ps.c
     indent = 5 * mm
+    table_width = CONTENT_WIDTH - indent
+    x = LEFT_MARGIN + indent
 
-    # 테이블 헤더
-    ps.ensure_space(10 * mm)
-    c.setFont(_font(bold=True), 10)
-    c.setFillColorRGB(*NORMAL_COLOR)
-    c.drawString(TABLE_DATE_X + indent, ps.y, "날짜")
-    c.drawString(TABLE_PRICE_X + indent, ps.y, f"종가 ({stock.currency})")
-    ps.move(5 * mm)
+    # 컬럼 너비: 날짜 45%, 종가 55%
+    col_widths = [table_width * 0.45, table_width * 0.55]
 
-    c.setLineWidth(0.3)
-    c.line(LEFT_MARGIN + indent, ps.y + 1 * mm, TABLE_PRICE_X + indent + 30 * mm, ps.y + 1 * mm)
-    ps.move(1 * mm)
-
-    # 데이터 행
-    c.setFont(_font(), 9)
+    # 데이터 구성: 헤더 + 데이터 행
+    header = ["날짜", f"종가 ({stock.currency})"]
+    rows = [header]
     for point in stock.price_data:
-        if ps.need_new_page(6 * mm):
-            ps.new_page()
-            # 새 페이지에서 헤더 재출력
-            c.setFont(_font(bold=True), 10)
-            c.setFillColorRGB(*NORMAL_COLOR)
-            c.drawString(TABLE_DATE_X + indent, ps.y, "날짜")
-            c.drawString(TABLE_PRICE_X + indent, ps.y, f"종가 ({stock.currency})")
-            ps.move(5 * mm)
-            c.setLineWidth(0.3)
-            c.line(
-                LEFT_MARGIN + indent, ps.y + 1 * mm, TABLE_PRICE_X + indent + 30 * mm, ps.y + 1 * mm
-            )
-            ps.move(1 * mm)
-            c.setFont(_font(), 9)
+        rows.append([point.date, _round2(Decimal(point.close))])
 
-        c.setFillColorRGB(*NORMAL_COLOR)
-        c.drawString(TABLE_DATE_X + indent, ps.y, point.date)
-        price_str = _round2(Decimal(point.close))
-        c.drawString(TABLE_PRICE_X + indent, ps.y, price_str)
-        ps.move(5 * mm)
+    # 스타일 기본 설정
+    style_cmds = [
+        # 헤더 행
+        ("BACKGROUND", (0, 0), (-1, 0), TABLE_HEADER_BG),
+        ("TEXTCOLOR", (0, 0), (-1, 0), TABLE_HEADER_FG),
+        ("FONTNAME", (0, 0), (-1, 0), _font(bold=True)),
+        ("FONTSIZE", (0, 0), (-1, 0), 10),
+        # 데이터 행 공통
+        ("FONTNAME", (0, 1), (-1, -1), _font()),
+        ("FONTSIZE", (0, 1), (-1, -1), 9),
+        ("TEXTCOLOR", (0, 1), (-1, -1), colors.black),
+        # 정렬: 날짜 LEFT, 종가 RIGHT
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        # 패딩
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        # 전체 그리드 테두리
+        ("GRID", (0, 0), (-1, -1), 0.4, TABLE_GRID_COLOR),
+        # 헤더 하단 강조선
+        ("LINEBELOW", (0, 0), (-1, 0), 1.0, TABLE_HEADER_BG),
+    ]
+
+    # 짝수 데이터 행 zebra striping (인덱스 1부터 시작, 짝수 행 = 2, 4, 6...)
+    for i in range(2, len(rows), 2):
+        style_cmds.append(("BACKGROUND", (0, i), (-1, i), TABLE_ROW_ALT_BG))
+
+    # LongTable: split()으로 페이지 분할 지원
+    table = LongTable(rows, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle(style_cmds))
+
+    # 전체 높이를 제한 없이 계산 (잘림 방지)
+    table.wrap(table_width, 9999 * mm)
+
+    # 현재 페이지 가용 높이로 분할 후 페이지별 출력
+    # split()은 avail_height에 맞게 parts[0]을 자르므로
+    # parts[0]은 언제나 현재 페이지에 바로 출력하고,
+    # parts[1]이 있을 때만 새 페이지로 넘긴다.
+    remaining = table
+    while remaining is not None:
+        avail_height = ps.y - BOTTOM_MARGIN
+
+        # 가용 공간이 너무 적으면 새 페이지에서 시작
+        if avail_height < 10 * mm:
+            ps.new_page()
+            avail_height = ps.y - BOTTOM_MARGIN
+
+        parts = remaining.split(table_width, avail_height)
+
+        # split() 결과가 없으면 새 페이지 재시도 (안전장치)
+        if not parts:
+            ps.new_page()
+            avail_height = ps.y - BOTTOM_MARGIN
+            parts = remaining.split(table_width, avail_height)
+            if not parts:
+                break
+
+        part = parts[0]
+        _, part_height = part.wrap(table_width, 9999 * mm)
+
+        # parts[0]은 avail_height에 맞게 분할됐으므로 현재 페이지에 바로 출력
+        part.drawOn(c, x, ps.y - part_height)
+        ps.move(part_height)
+
+        # 다음 파트가 있으면 새 페이지 후 계속
+        remaining = parts[1] if len(parts) > 1 else None
+        if remaining is not None:
+            ps.new_page()
+
+    ps.move(2 * mm)
+
+
+def _draw_info_table(ps: _PageState, rows: list[tuple[str, str]], indent: float = 5 * mm) -> None:
+    """키-값 쌍을 2컬럼 테이블 형태로 출력.
+
+    Args:
+        ps: 페이지 상태
+        rows: [(키, 값), ...] 리스트
+        indent: 왼쪽 들여쓰기
+    """
+    table_width = CONTENT_WIDTH - indent
+    col_widths = [table_width * 0.35, table_width * 0.65]
+
+    table_data = [[key, value] for key, value in rows]
+
+    style_cmds = [
+        # 키 컬럼: 연회색 배경 + Bold
+        ("BACKGROUND", (0, 0), (0, -1), INFO_KEY_BG),
+        ("FONTNAME", (0, 0), (0, -1), _font(bold=True)),
+        # 값 컬럼: 흰색 배경 + 일반
+        ("BACKGROUND", (1, 0), (1, -1), colors.white),
+        ("FONTNAME", (1, 0), (1, -1), _font()),
+        # 공통 폰트 크기 / 색상
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
+        # 정렬
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (1, -1), "LEFT"),
+        # 패딩
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        # 외곽선 + 행 구분선
+        ("BOX", (0, 0), (-1, -1), 0.5, TABLE_GRID_COLOR),
+        ("INNERGRID", (0, 0), (-1, -1), 0.3, TABLE_GRID_COLOR),
+    ]
+
+    table = Table(table_data, colWidths=col_widths)
+    table.setStyle(TableStyle(style_cmds))
+
+    tbl_width, tbl_height = table.wrap(table_width, ps.y - BOTTOM_MARGIN)
+    ps.ensure_space(tbl_height + 2 * mm)
+    table.drawOn(ps.c, LEFT_MARGIN + indent, ps.y - tbl_height)
+    ps.move(tbl_height + 3 * mm)
 
 
 def _draw_link(ps: _PageState, label: str, url: str, indent: float = 5 * mm) -> None:
@@ -237,6 +330,42 @@ def _draw_link(ps: _PageState, label: str, url: str, indent: float = 5 * mm) -> 
     ps.move(5.5 * mm)
 
 
+def _draw_formula_box(ps: _PageState, stock: StockGiftResult) -> None:
+    """증여금액 계산식을 강조 박스 안에 출력."""
+    avg_disp = _round2(stock.price_average)
+    rate_disp = _round2(stock.exchange_rate)
+    krw_disp = _format_krw(stock.gift_amount_krw)
+
+    line1 = f"{avg_disp} {stock.currency}  ×  {stock.qty:,}주  ×  {rate_disp} KRW/{stock.currency}"
+    line2 = f"= {krw_disp} 원"
+
+    box_height = 18 * mm
+    box_width = CONTENT_WIDTH - 5 * mm
+    box_x = LEFT_MARGIN + 5 * mm
+
+    ps.ensure_space(box_height + 4 * mm)
+    box_y = ps.y - box_height
+
+    c = ps.c
+    # 배경 + 테두리
+    c.setFillColor(FORMULA_BOX_BG)
+    c.setStrokeColor(FORMULA_BOX_BORDER)
+    c.setLineWidth(0.8)
+    c.roundRect(box_x, box_y, box_width, box_height, 2 * mm, fill=1, stroke=1)
+
+    # 텍스트 (중앙 정렬)
+    c.setFillColorRGB(*NORMAL_COLOR)
+    text_center_x = box_x + box_width / 2
+
+    c.setFont(_font(), 10)
+    c.drawCentredString(text_center_x, box_y + box_height * 0.60, line1)
+
+    c.setFont(_font(bold=True), 11)
+    c.drawCentredString(text_center_x, box_y + box_height * 0.22, line2)
+
+    ps.move(box_height + 4 * mm)
+
+
 def _draw_stock_section(
     ps: _PageState,
     stock: StockGiftResult,
@@ -251,23 +380,39 @@ def _draw_stock_section(
 
     # ■ 증여 기본 정보
     _draw_sub_heading(ps, "증여 기본 정보")
-    _draw_key_value(ps, "증여일", gift_date.isoformat())
-    _draw_key_value(ps, "종목코드", stock.ticker)
-    _draw_key_value(ps, "수량", f"{stock.qty:,}주")
+    _draw_info_table(
+        ps,
+        [
+            ("증여일", gift_date.isoformat()),
+            ("종목코드", stock.ticker),
+            ("수량", f"{stock.qty:,}주"),
+        ],
+    )
     ps.move(2 * mm)
 
     # ■ 주가 평균 계산 근거
     _draw_sub_heading(ps, "주가 평균 계산 근거")
     period_str = f"{stock.period_start.isoformat()} ~ {stock.period_end.isoformat()}"
-    _draw_key_value(ps, "평균 산정 기간", period_str)
+
+    # 평균 산정 기간 테이블과 종가 테이블 첫 몇 행을 같은 페이지에 이어서 배치.
+    # info_table 높이 + 종가 테이블 헤더 1행 분(약 10mm)을 합산해 공간 확보 후 넘김 판단.
+    INFO_ROW_H = 8 * mm  # info_table 1행 대략 높이
+    PRICE_HDR_H = 10 * mm  # 종가 테이블 헤더 + 1행 최소 높이
+    ps.ensure_space(INFO_ROW_H + PRICE_HDR_H)
+
+    _draw_info_table(ps, [("평균 산정 기간", period_str)])
     ps.move(1 * mm)
 
     _draw_price_table(ps, stock)
     ps.move(1 * mm)
 
-    _draw_key_value(ps, "데이터 건수", f"{len(stock.price_data)}일")
-    avg_str = f"{_round2(stock.price_average)} {stock.currency}"
-    _draw_key_value(ps, "평균 종가", avg_str)
+    _draw_info_table(
+        ps,
+        [
+            ("데이터 건수", f"{len(stock.price_data)}일"),
+            ("평균 종가", f"{_round2(stock.price_average)} {stock.currency}"),
+        ],
+    )
 
     yahoo_url = _build_yahoo_url(stock.ticker, stock.period_start, stock.period_end)
     _draw_link(ps, "데이터 출처", yahoo_url)
@@ -276,9 +421,14 @@ def _draw_stock_section(
     # ■ 환율 정보
     _draw_sub_heading(ps, "환율 정보")
     rate_date_str = f"{stock.exchange_rate_date.isoformat()} (증여일 직전 영업일)"
-    _draw_key_value(ps, "환율 적용일", rate_date_str)
     rate_str = f"{_round2(stock.exchange_rate)} KRW/{stock.currency}"
-    _draw_key_value(ps, "매매기준환율", rate_str)
+    _draw_info_table(
+        ps,
+        [
+            ("환율 적용일", rate_date_str),
+            ("매매기준환율", rate_str),
+        ],
+    )
 
     smbs_url = _build_smbs_url(rate_period_start, rate_period_end, stock.currency)
     _draw_link(ps, "데이터 출처", smbs_url)
@@ -286,61 +436,78 @@ def _draw_stock_section(
 
     # ■ 증여금액 계산
     _draw_sub_heading(ps, "증여금액 계산")
-    ps.ensure_space(8 * mm)
-    avg_disp = _round2(stock.price_average)
-    rate_disp = _round2(stock.exchange_rate)
-    krw_disp = _format_krw(stock.gift_amount_krw)
-    formula = (
-        f"{avg_disp} {stock.currency}  ×  {stock.qty:,}주  ×  {rate_disp} KRW/{stock.currency}"
-        f"  =  {krw_disp} 원"
-    )
-    c = ps.c
-    c.setFont(_font(), 10)
-    c.setFillColorRGB(*NORMAL_COLOR)
-    c.drawString(LEFT_MARGIN + 5 * mm, ps.y, formula)
-    ps.move(8 * mm)
+    _draw_formula_box(ps, stock)
 
 
 def _draw_total_section(ps: _PageState, result: GiftCalculationResult) -> None:
-    """합계 섹션 출력 (2종목 이상인 경우만)."""
-    ps.ensure_space(30 * mm)
-    c = ps.c
+    """합계 섹션 출력 (2종목 이상인 경우만) — Platypus Table 사용."""
+    indent = 5 * mm
+    table_width = CONTENT_WIDTH - indent
 
     # 구분선
+    ps.ensure_space(10 * mm)
+    c = ps.c
     c.setLineWidth(0.5)
     c.line(LEFT_MARGIN, ps.y, PAGE_WIDTH - RIGHT_MARGIN, ps.y)
     ps.move(6 * mm)
 
-    c.setFont(_font(bold=True), 12)
-    c.setFillColorRGB(*NORMAL_COLOR)
-    c.drawString(LEFT_MARGIN, ps.y, "■ 합계")
-    ps.move(7 * mm)
+    _draw_sub_heading(ps, "합계")
 
-    # 종목별 소계 표
-    c.setFont(_font(bold=True), 10)
-    c.drawString(LEFT_MARGIN + 5 * mm, ps.y, "종목")
-    c.drawString(LEFT_MARGIN + 60 * mm, ps.y, "증여금액")
-    ps.move(5 * mm)
+    # 종목별 소계 행 + 합계 행
+    col_widths = [table_width * 0.55, table_width * 0.45]
 
-    c.setLineWidth(0.3)
-    c.line(LEFT_MARGIN + 5 * mm, ps.y + 1 * mm, LEFT_MARGIN + 110 * mm, ps.y + 1 * mm)
-    ps.move(1 * mm)
-
-    c.setFont(_font(), 10)
+    header = ["종목", "증여금액"]
+    rows = [header]
     for stock in result.stocks:
-        ps.ensure_space(6 * mm)
-        c.drawString(LEFT_MARGIN + 5 * mm, ps.y, f"{stock.ticker} ({stock.currency})")
-        c.drawString(LEFT_MARGIN + 60 * mm, ps.y, f"{_format_krw(stock.gift_amount_krw)} 원")
-        ps.move(5.5 * mm)
+        rows.append(
+            [
+                f"{stock.ticker} ({stock.currency})",
+                f"{_format_krw(stock.gift_amount_krw)} 원",
+            ]
+        )
+    # 합계 행
+    rows.append(["총 증여금액", f"{_format_krw(result.total_gift_amount_krw)} 원"])
 
-    ps.move(2 * mm)
+    total_row_idx = len(rows) - 1
 
-    # 총합계
-    ps.ensure_space(8 * mm)
-    c.setFont(_font(bold=True), 11)
-    c.drawString(LEFT_MARGIN + 5 * mm, ps.y, "총 증여금액")
-    c.drawString(LEFT_MARGIN + 60 * mm, ps.y, f"{_format_krw(result.total_gift_amount_krw)} 원")
-    ps.move(6 * mm)
+    style_cmds = [
+        # 헤더 행
+        ("BACKGROUND", (0, 0), (-1, 0), TABLE_HEADER_BG),
+        ("TEXTCOLOR", (0, 0), (-1, 0), TABLE_HEADER_FG),
+        ("FONTNAME", (0, 0), (-1, 0), _font(bold=True)),
+        ("FONTSIZE", (0, 0), (-1, 0), 10),
+        # 데이터 행 공통
+        ("FONTNAME", (0, 1), (-1, total_row_idx - 1), _font()),
+        ("FONTSIZE", (0, 1), (-1, total_row_idx - 1), 10),
+        ("TEXTCOLOR", (0, 1), (-1, total_row_idx - 1), colors.black),
+        # 짝수 데이터 행 zebra striping
+        *[("BACKGROUND", (0, i), (-1, i), TABLE_ROW_ALT_BG) for i in range(2, total_row_idx, 2)],
+        # 합계 행: 강조
+        ("BACKGROUND", (0, total_row_idx), (-1, total_row_idx), colors.HexColor("#DFF0FF")),
+        ("FONTNAME", (0, total_row_idx), (-1, total_row_idx), _font(bold=True)),
+        ("FONTSIZE", (0, total_row_idx), (-1, total_row_idx), 11),
+        ("TEXTCOLOR", (0, total_row_idx), (-1, total_row_idx), colors.black),
+        ("LINEABOVE", (0, total_row_idx), (-1, total_row_idx), 1.0, TABLE_HEADER_BG),
+        # 정렬: 종목 LEFT, 금액 RIGHT
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        # 패딩
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        # 전체 그리드 테두리
+        ("GRID", (0, 0), (-1, -1), 0.4, TABLE_GRID_COLOR),
+        ("LINEBELOW", (0, 0), (-1, 0), 1.0, TABLE_HEADER_BG),
+    ]
+
+    table = Table(rows, colWidths=col_widths)
+    table.setStyle(TableStyle(style_cmds))
+
+    tbl_width, tbl_height = table.wrap(table_width, ps.y - BOTTOM_MARGIN)
+    ps.ensure_space(tbl_height + 2 * mm)
+    table.drawOn(c, LEFT_MARGIN + indent, ps.y - tbl_height)
+    ps.move(tbl_height + 4 * mm)
 
 
 def generate_pdf_gift_calculation(
