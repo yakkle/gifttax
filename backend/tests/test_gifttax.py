@@ -107,6 +107,42 @@ class TestAPI:
             assert first.status_code == 200
             assert second.status_code == 404
 
+    def test_delete_file_removes_pdf(self):
+        """DELETE 요청으로 미다운로드 PDF 파일이 삭제된다."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_id = "test-file-id"
+            pdf_path = Path(tmpdir) / f"{file_id}.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4 test content")
+
+            with patch("api.router.STORAGE_DIR", tmpdir):
+                response = client.delete(f"/api/download/{file_id}")
+
+            assert response.status_code == 204
+            assert not pdf_path.exists()
+
+    def test_delete_nonexistent_file_returns_204(self):
+        """이미 없는 파일을 DELETE 해도 204를 반환한다 (멱등성)."""
+        response = client.delete("/api/download/nonexistent-file")
+        assert response.status_code == 204
+
+    def test_recalculate_deletes_previous_files(self):
+        """재계산 시 이전 계산의 미다운로드 파일이 DELETE 요청으로 삭제된다."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gift_file_id = "prev-gift-pdf"
+            rate_file_id = "prev-rate-pdf"
+            (Path(tmpdir) / f"{gift_file_id}.pdf").write_bytes(b"%PDF-1.4 gift")
+            (Path(tmpdir) / f"{rate_file_id}.pdf").write_bytes(b"%PDF-1.4 rate")
+
+            with patch("api.router.STORAGE_DIR", tmpdir):
+                # 프론트엔드가 재계산 전 이전 file_id를 DELETE로 정리
+                r1 = client.delete(f"/api/download/{gift_file_id}")
+                r2 = client.delete(f"/api/download/{rate_file_id}")
+
+            assert r1.status_code == 204
+            assert r2.status_code == 204
+            assert not (Path(tmpdir) / f"{gift_file_id}.pdf").exists()
+            assert not (Path(tmpdir) / f"{rate_file_id}.pdf").exists()
+
 
 class TestCalculator:
     def test_calculate_gift_amount(self):

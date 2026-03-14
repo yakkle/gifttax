@@ -28,13 +28,9 @@ def _save_pdf(output: io.BytesIO) -> str:
     return file_id
 
 
-def _delete_previous_files(result: GiftCalculationResult | None) -> None:
-    """이전 계산의 PDF 파일을 삭제한다."""
-    if result is None:
-        return
-    for file_id in (result.gift_pdf_file_id, result.rate_pdf_file_id):
-        if file_id:
-            Path(STORAGE_DIR, f"{file_id}.pdf").unlink(missing_ok=True)
+def _delete_pdf(file_id: str) -> None:
+    """스토리지에서 PDF 파일을 삭제한다."""
+    Path(STORAGE_DIR, f"{file_id}.pdf").unlink(missing_ok=True)
 
 
 @router.post("/calculate")
@@ -81,3 +77,9 @@ async def download_file(file_id: str):
         filename=f"gifttax_{file_id}.pdf",
         background=BackgroundTask(lambda p: p.unlink(missing_ok=True), file_path),
     )
+
+
+@router.delete("/download/{file_id}", status_code=204)
+async def delete_file(file_id: str):
+    """미다운로드 PDF 파일을 삭제한다. 파일이 없어도 성공으로 처리한다."""
+    _delete_pdf(file_id)
