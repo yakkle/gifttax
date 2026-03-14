@@ -9,7 +9,7 @@ from starlette.background import BackgroundTask
 
 from models import GiftCalculationInput, GiftCalculationResult
 from services import calculator
-from pdf.generator import pdf as pdf_generator
+from pdf.generator import exchange_rate_pdf as pdf_generator
 from pdf.generator import gift_calculation_pdf as gift_pdf_generator
 from integrations.scraper import smbs
 from integrations.scraper.yahoo import InvalidTickerError
