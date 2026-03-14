@@ -11,6 +11,7 @@
         <header>
             <h1>GiftTax</h1>
             <p>해외주식 증여 금액 계산기</p>
+            <p class="disclaimer-short">본 서비스의 계산 결과는 참고용입니다. 정확한 신고는 세무 전문가와 상담하세요.</p>
         </header>
 
         <main>
@@ -44,6 +45,13 @@
             <div id="result" class="hidden">
                 <h2>계산 결과</h2>
                 <div id="result-content"></div>
+
+                <div class="disclaimer-main" role="note" aria-label="법적 고지사항">
+                    <strong>법적 고지사항</strong>
+                    <p>본 계산 결과와 생성된 PDF는 참고용 자료입니다.<br>
+                    실제 증여세 신고 시 적용되는 평가액은 세법 규정 및 과세 당국의 판단에 따라 달라질 수 있습니다.<br>
+                    정확한 신고를 위해 세무 전문가와 반드시 상담하시기 바랍니다.</p>
+                </div>
 
                 <div class="download-buttons">
                     <button id="btn-gift-pdf" class="btn-download">계산 증빙 PDF</button>
