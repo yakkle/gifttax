@@ -1,0 +1,15 @@
+services:
+  gifttax:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./frontend:/app/frontend:ro
+      - gifttax-data:/tmp/gifttax
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    restart: unless-stopped
+
+volumes:
+  gifttax-data:

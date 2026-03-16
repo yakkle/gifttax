@@ -2,7 +2,7 @@
 name = "gifttax"
 version = "0.1.0"
 description = "해외주식 증여 금액 계산기"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 license = "MIT"
 authors = [
     {name = "StockTax", email = "info@stocktax.example.com"}
@@ -32,15 +32,15 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.setuptools]
+[tool.hatch.build.targets.wheel]
 packages = ["backend"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
@@ -50,7 +50,7 @@ ignore = ["E501"]
 pythonpath = "."
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

@@ -1,15 +1,27 @@
 services:
   gifttax:
     build: .
-    ports:
-      - "8000:8000"
     volumes:
-      - ./frontend:/app/frontend:ro
       - gifttax-data:/tmp/gifttax
     environment:
       - HOST=0.0.0.0
       - PORT=8000
     restart: unless-stopped
 
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - letsencrypt-www:/var/www/certbot
+    depends_on:
+      - gifttax
+    restart: unless-stopped
+
 volumes:
   gifttax-data:
+  letsencrypt:
+  letsencrypt-www:

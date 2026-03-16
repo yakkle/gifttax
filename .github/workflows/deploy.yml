@@ -1,0 +1,57 @@
+name: Deploy to OCI
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  # ─────────────────────────────────────────
+  # 1. 테스트 & 린트 (GitHub 호스팅 — 격리된 클린 환경)
+  # ─────────────────────────────────────────
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uv 설치 및 Python 3.13 세팅
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - name: 의존성 설치 (dev 포함)
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: 테스트 (pytest)
+        run: pytest backend/tests/
+
+  # ─────────────────────────────────────────
+  # 2. 빌드 & 배포 (OCI 인스턴스의 self-hosted runner에서 직접 실행)
+  # ─────────────────────────────────────────
+  deploy:
+    name: Build & Deploy
+    runs-on: self-hosted
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker 이미지 빌드
+        run: docker compose build
+
+      - name: 서비스 재시작
+        run: docker compose up -d --remove-orphans
+
+      - name: 미사용 이미지 정리
+        run: docker image prune -f
+
+      - name: 헬스 체크
+        run: |
+          sleep 5
+          curl --fail --silent http://localhost:8000/api/health || \
+            (echo "Health check failed" && exit 1)

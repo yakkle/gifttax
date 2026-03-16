@@ -1,14 +1,16 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     gcc \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
 
-COPY backend/ backend/
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
+COPY backend/ backend/
+
+RUN uv pip install --system --no-cache -e .
 
 COPY frontend/ frontend/
 
