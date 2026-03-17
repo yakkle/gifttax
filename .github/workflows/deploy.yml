@@ -22,7 +22,7 @@ jobs:
           python-version: "3.13"
 
       - name: 의존성 설치 (dev 포함)
-        run: uv pip install --system -e ".[dev]"
+        run: uv pip install -e ".[dev]"
 
       - name: Lint (ruff)
         run: ruff check .
