@@ -3,14 +3,14 @@ from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 
+from backend.integrations.scraper import smbs
+from backend.integrations.scraper import yahoo as scraper
 from backend.models import (
     GiftCalculationInput,
     GiftCalculationResult,
     PriceDataPoint,
     StockGiftResult,
 )
-from backend.integrations.scraper import smbs
-from backend.integrations.scraper import yahoo as scraper
 from backend.tax import engine as tax_engine
 
 

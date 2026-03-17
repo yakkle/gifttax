@@ -5,14 +5,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from starlette.background import BackgroundTask
-
-from models import GiftCalculationInput, GiftCalculationResult
-from services import calculator
-from pdf.generator import exchange_rate_pdf as pdf_generator
-from pdf.generator import gift_calculation_pdf as gift_pdf_generator
 from integrations.scraper import smbs
 from integrations.scraper.yahoo import InvalidTickerError
+from models import GiftCalculationInput, GiftCalculationResult
+from pdf.generator import exchange_rate_pdf as pdf_generator
+from pdf.generator import gift_calculation_pdf as gift_pdf_generator
+from services import calculator
+from starlette.background import BackgroundTask
 
 router = APIRouter(prefix="/api")
 

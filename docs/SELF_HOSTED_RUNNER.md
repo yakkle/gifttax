@@ -50,7 +50,7 @@ docker run --rm hello-world
 
 1. GitHub 저장소 → **Settings** → **Actions** → **Runners**
 2. **New self-hosted runner** 클릭
-3. OS: **Linux**, Architecture: **x64** 선택
+3. OS: **Linux**, Architecture: **arm64** 선택
 4. 화면에 표시된 명령어를 그대로 OCI 인스턴스에서 실행
 
 ### 2-2. Runner 다운로드 및 설치

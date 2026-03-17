@@ -4,11 +4,6 @@ import io
 from datetime import date
 from decimal import Decimal
 
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas
-from reportlab.platypus import LongTable
-
 from pdf.generator.common import (
     CONTENT_WIDTH,
     LEFT_MARGIN,
@@ -19,6 +14,10 @@ from pdf.generator.common import (
     draw_longtable,
     font,
 )
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
+from reportlab.platypus import LongTable
 
 
 def generate_pdf_exchange_rate(

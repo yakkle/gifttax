@@ -6,10 +6,10 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-
-from backend.main import app
 from integrations.scraper.yahoo import InvalidTickerError
 from models import GiftCalculationInput, StockInput
+
+from backend.main import app
 
 client = TestClient(app)
 

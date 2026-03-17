@@ -1,5 +1,10 @@
-from pathlib import Path
 import sys
+from pathlib import Path
+
+from api.router import router
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 # Ensure backend directory is in sys.path so we can import modules directly
 # This helps running the app without manually setting PYTHONPATH
@@ -9,11 +14,6 @@ backend_dir = Path(__file__).parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-
-from api.router import router
 
 app = FastAPI(title="StockTax", description="해외주식 증여 금액 계산기")
 

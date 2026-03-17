@@ -14,7 +14,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
-from reportlab.platypus import Flowable, LongTable, TableStyle
+from reportlab.platypus import LongTable, TableStyle
 
 # ---------------------------------------------------------------------------
 # 폰트

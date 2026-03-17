@@ -12,8 +12,7 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
-import pytest
-
+from models import GiftCalculationResult, PriceDataPoint, StockGiftResult
 from pdf.generator.gift_calculation_pdf import (
     _build_smbs_url,
     _build_yahoo_url,
@@ -21,8 +20,6 @@ from pdf.generator.gift_calculation_pdf import (
     _round2,
     generate_pdf_gift_calculation,
 )
-from models import GiftCalculationResult, StockGiftResult, PriceDataPoint
-
 
 # ---------------------------------------------------------------------------
 # 픽스처
@@ -271,6 +268,7 @@ class TestCalculateEndpointPdfFileIds:
 
     def test_calculate_returns_gift_pdf_file_id(self):
         from fastapi.testclient import TestClient
+
         from backend.main import app
 
         client = TestClient(app)
@@ -305,8 +303,9 @@ class TestCalculateEndpointPdfFileIds:
 
     def test_calculate_invalid_ticker_returns_400(self):
         from fastapi.testclient import TestClient
-        from backend.main import app
         from integrations.scraper.yahoo import InvalidTickerError
+
+        from backend.main import app
 
         client = TestClient(app)
         payload = {
@@ -323,6 +322,7 @@ class TestCalculateEndpointPdfFileIds:
 
     def test_calculate_missing_stocks_returns_422(self):
         from fastapi.testclient import TestClient
+
         from backend.main import app
 
         client = TestClient(app)

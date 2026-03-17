@@ -1,21 +1,14 @@
 """계산 증빙자료 PDF 생성 모듈."""
 
 import io
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
-
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas
-from reportlab.platypus import LongTable, Table, TableStyle
+from datetime import UTC, date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 from models import GiftCalculationResult, StockGiftResult
 from pdf.generator.common import (
     BOTTOM_MARGIN,
     CONTENT_WIDTH,
     LEFT_MARGIN,
-    PAGE_HEIGHT,
     PAGE_WIDTH,
     RIGHT_MARGIN,
     TABLE_GRID_COLOR,
@@ -27,6 +20,11 @@ from pdf.generator.common import (
     draw_longtable,
     font,
 )
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
+from reportlab.platypus import LongTable, Table, TableStyle
 
 # 컬럼 x 좌표
 COL1_X = LEFT_MARGIN
@@ -68,7 +66,7 @@ def _format_krw(value: Decimal) -> str:
 
 def _date_to_unix(d: date) -> int:
     """date 를 UTC 기준 Unix timestamp (초) 로 변환."""
-    dt = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+    dt = datetime(d.year, d.month, d.day, tzinfo=UTC)
     return int(dt.timestamp())
 
 
@@ -294,9 +292,9 @@ def _draw_stock_section(
     period_str = f"{stock.period_start.isoformat()} ~ {stock.period_end.isoformat()}"
 
     # 평균 산정 기간 테이블과 종가 테이블 첫 몇 행을 같은 페이지에 이어서 배치.
-    INFO_ROW_H = 8 * mm  # info_table 1행 대략 높이
-    PRICE_HDR_H = 10 * mm  # 종가 테이블 헤더 + 1행 최소 높이
-    ps.ensure_space(INFO_ROW_H + PRICE_HDR_H)
+    info_row_h = 8 * mm  # info_table 1행 대략 높이
+    price_hdr_h = 10 * mm  # 종가 테이블 헤더 + 1행 최소 높이
+    ps.ensure_space(info_row_h + price_hdr_h)
 
     _draw_info_table(ps, [("평균 산정 기간", period_str)])
     ps.move(1 * mm)

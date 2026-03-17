@@ -2,12 +2,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
-import pytest
 from dateutil.relativedelta import relativedelta
-
 from services.calculator import calculate_gift_amount
-from integrations.scraper.yahoo import get_stock_prices
-from integrations.scraper.smbs import get_exchange_rate, get_exchange_rates
 
 
 class TestDateCalculation:
