@@ -5,19 +5,18 @@
 ## 기능
 
 - **증여 금액 계산**: 증여일 전후 2개월간의 종가 평균 × 매매기준환율
-- **주가 데이터**: investing.com에서 자동 수집
+- **주가 데이터**: finance.yahoo.com 에서 자동 수집
 - **환율 데이터**: smbs.biz에서 자동 수집 (매매기준환율)
-- **증빙 서류 생성**:
-  - Excel: 주가 데이터 + 종가 평균
-  - PDF: 환율 증빙
+- **증빙 서류 생성(PDF)**:
+  - 주가 데이터 + 종가 평균
+  - 환율 증빙
 
 ## 기술 스택
 
 | 구분 | 기술 |
 |------|------|
-| Backend | FastAPI + Python 3.11 |
+| Backend | FastAPI + Python 3.13 |
 | Frontend | Vanilla JS + HTML/CSS |
-| Excel | openpyxl |
 | PDF | reportlab |
 | Scraping | requests + BeautifulSoup |
 | Deploy | Docker + OCI |
@@ -26,7 +25,7 @@
 
 ### 필수 조건
 
-- Python 3.11+
+- Python 3.13+
 - Docker (optional)
 
 ### 로컬 실행
@@ -127,34 +126,13 @@ gifttax/
 │   │       └── yahoo.py
 │   ├── pdf/
 │   │   └── generator/         # 파일 생성기
-│   │       ├── excel.py
-│   │       └── pdf.py
+│   │       ├── exchange_rate_pdf.py
+│   │       └── gift_calculation_pdf.py
 │   ├── models/        # Pydantic 모델
 │   └── tests/         # 테스트
 ├── Dockerfile
 ├── docker-compose.yml
 └── pyproject.toml
-```
-
-## OCI 배포 (선택)
-
-```bash
-# 1. OCI VM 생성 (Always Free)
-
-# 2. Docker 설치
-sudo yum install -y docker
-sudo systemctl start docker
-
-# 3. 코드 클론
-git clone <your-repo>
-cd stocktax
-
-# 4. 빌드 & 실행
-docker-compose up -d
-
-# 5. 방화벽 설정
-sudo firewall-cmd --permanent --add-port=8000/tcp
-sudo firewall-cmd --reload
 ```
 
 ## 라이선스
