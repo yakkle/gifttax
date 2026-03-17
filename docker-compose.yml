@@ -10,12 +10,14 @@ services:
 
   nginx:
     image: nginx:alpine
+    environment:
+      CERT_DOMAIN: ${CERT_DOMAIN}
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - letsencrypt:/etc/letsencrypt:ro
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${LETSENCRYPT_DIR:-/etc/letsencrypt}:/etc/letsencrypt:ro
       - letsencrypt-www:/var/www/certbot
     depends_on:
       - gifttax
@@ -23,5 +25,4 @@ services:
 
 volumes:
   gifttax-data:
-  letsencrypt:
   letsencrypt-www:
