@@ -3,7 +3,8 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from dateutil.relativedelta import relativedelta
-from services.calculator import calculate_gift_amount
+
+from backend.services.calculator import calculate_gift_amount
 
 
 class TestDateCalculation:
@@ -52,8 +53,8 @@ class TestCalculatorWithMock:
     def test_calculate_gift_amount_with_mock(self):
         """Mock을 사용한 계산 테스트"""
         with (
-            patch("services.calculator.scraper.get_stock_prices") as mock_prices,
-            patch("services.calculator.smbs.get_exchange_rate") as mock_rate,
+            patch("backend.services.calculator.scraper.get_stock_prices") as mock_prices,
+            patch("backend.services.calculator.smbs.get_exchange_rate") as mock_rate,
         ):
             mock_prices.return_value = [
                 (date(2025, 9, 8), Decimal("100.00")),
@@ -86,7 +87,7 @@ class TestScraperFunctions:
         <set label='25.11.07' value='1448.0' />
         </chart>"""
 
-        from integrations.scraper.smbs import parse_xml_response
+        from backend.integrations.scraper.smbs import parse_xml_response
 
         result = parse_xml_response(xml_data)
 

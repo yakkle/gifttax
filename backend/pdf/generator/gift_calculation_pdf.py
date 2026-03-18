@@ -4,8 +4,14 @@ import io
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from models import GiftCalculationResult, StockGiftResult
-from pdf.generator.common import (
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas
+from reportlab.platypus import LongTable, Table, TableStyle
+
+from backend.models import GiftCalculationResult, StockGiftResult
+from backend.pdf.generator.common import (
     BOTTOM_MARGIN,
     CONTENT_WIDTH,
     LEFT_MARGIN,
@@ -20,11 +26,6 @@ from pdf.generator.common import (
     draw_longtable,
     font,
 )
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas
-from reportlab.platypus import LongTable, Table, TableStyle
 
 # 컬럼 x 좌표
 COL1_X = LEFT_MARGIN

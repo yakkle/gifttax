@@ -12,8 +12,8 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
-from models import GiftCalculationResult, PriceDataPoint, StockGiftResult
-from pdf.generator.gift_calculation_pdf import (
+from backend.models import GiftCalculationResult, PriceDataPoint, StockGiftResult
+from backend.pdf.generator.gift_calculation_pdf import (
     _build_smbs_url,
     _build_yahoo_url,
     _format_krw,
@@ -147,8 +147,12 @@ class TestBuildYahooUrl:
         import re
 
         url = _build_yahoo_url("AAPL", date(2024, 3, 2), date(2024, 6, 30))
-        p1 = int(re.search(r"period1=(\d+)", url).group(1))
-        p2 = int(re.search(r"period2=(\d+)", url).group(1))
+        match1 = re.search(r"period1=(\d+)", url)
+        match2 = re.search(r"period2=(\d+)", url)
+        assert match1 is not None
+        assert match2 is not None
+        p1 = int(match1.group(1))
+        p2 = int(match2.group(1))
         assert p1 < p2
 
     def test_ticker_uppercase_in_url(self):
@@ -278,9 +282,9 @@ class TestCalculateEndpointPdfFileIds:
         }
 
         with (
-            patch("services.calculator.scraper.get_stock_prices") as mock_prices,
-            patch("services.calculator.smbs.get_exchange_rate") as mock_rate,
-            patch("services.calculator.smbs.get_exchange_rates") as mock_rates,
+            patch("backend.services.calculator.scraper.get_stock_prices") as mock_prices,
+            patch("backend.services.calculator.smbs.get_exchange_rate") as mock_rate,
+            patch("backend.services.calculator.smbs.get_exchange_rates") as mock_rates,
         ):
             mock_prices.return_value = [
                 (date(2024, 3, 2), Decimal("195.30")),
@@ -303,8 +307,8 @@ class TestCalculateEndpointPdfFileIds:
 
     def test_calculate_invalid_ticker_returns_400(self):
         from fastapi.testclient import TestClient
-        from integrations.scraper.yahoo import InvalidTickerError
 
+        from backend.integrations.scraper.yahoo import InvalidTickerError
         from backend.main import app
 
         client = TestClient(app)
@@ -313,7 +317,7 @@ class TestCalculateEndpointPdfFileIds:
             "stocks": [{"ticker": "NOTEXIST", "qty": 10, "currency": "USD"}],
         }
 
-        with patch("services.calculator.scraper.get_stock_prices") as mock_prices:
+        with patch("backend.services.calculator.scraper.get_stock_prices") as mock_prices:
             mock_prices.side_effect = InvalidTickerError("종목 코드를 찾을 수 없습니다: NOTEXIST")
             response = client.post("/api/calculate", json=payload)
 
