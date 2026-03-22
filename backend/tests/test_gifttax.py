@@ -35,6 +35,12 @@ class TestModels:
 
 
 class TestAPI:
+    def test_health_endpoint(self):
+        response = client.get("/api/health")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
     def test_calculate_endpoint_valid_input(self):
         payload = {
             "gift_date": "2025-11-06",

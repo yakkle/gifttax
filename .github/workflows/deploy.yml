@@ -52,6 +52,15 @@ jobs:
 
       - name: 헬스 체크
         run: |
-          sleep 5
-          curl --fail --silent http://localhost:8000/api/health || \
-            (echo "Health check failed" && exit 1)
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent http://localhost/api/health > /dev/null; then
+              exit 0
+            fi
+            echo "Health check attempt ${attempt}/12 failed; retrying in 5s"
+            sleep 5
+          done
+
+          echo "Health check failed"
+          docker compose --env-file /etc/gifttax/gifttax.env ps
+          docker compose --env-file /etc/gifttax/gifttax.env logs --tail=100 gifttax nginx
+          exit 1

@@ -19,6 +19,11 @@ router = APIRouter(prefix="/api")
 STORAGE_DIR = "/tmp/gifttax"
 
 
+@router.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
 def _save_pdf(output: io.BytesIO) -> str:
     """BytesIO PDF를 스토리지에 저장하고 file_id를 반환한다."""
     os.makedirs(STORAGE_DIR, exist_ok=True)
