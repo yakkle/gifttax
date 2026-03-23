@@ -311,7 +311,11 @@ def _draw_stock_section(
         ],
     )
 
-    yahoo_url = _build_yahoo_url(stock.ticker, stock.period_start, stock.period_end)
+    yahoo_url = _build_yahoo_url(
+        stock.ticker,
+        stock.period_start,
+        stock.period_end + timedelta(days=1),
+    )
     _draw_link(ps, "데이터 출처", yahoo_url)
     ps.move(2 * mm)
 

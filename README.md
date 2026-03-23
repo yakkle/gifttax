@@ -4,7 +4,7 @@
 
 ## 기능
 
-- **증여 금액 계산**: 증여일 전후 2개월간의 종가 평균 × 매매기준환율
+- **증여 금액 계산**: 증여일 전 2개월 + 1일부터 후 2개월 - 1일까지의 종가 평균 × 매매기준환율
 - **주가 데이터**: finance.yahoo.com 에서 자동 수집
 - **환율 데이터**: smbs.biz에서 자동 수집 (매매기준환율)
 - **증빙 서류 생성(PDF)**:
@@ -71,6 +71,8 @@ mypy backend/
 
 ### 계산하기
 
+주의: 증여일 기준 후 2개월 기간이 모두 지난 뒤에만 계산할 수 있습니다. 예를 들어 `2025-11-06` 증여분은 `2026-01-06`부터 계산 가능합니다.
+
 ```bash
 curl -X POST http://localhost:8000/api/calculate \
   -H "Content-Type: application/json" \
@@ -101,6 +103,19 @@ curl -X POST http://localhost:8000/api/calculate \
   ],
   "total_gift_amount_krw": "20250000.00",
   "exchange_rate_date": "2025-11-06"
+}
+```
+
+계산 불가 예시:
+
+```json
+{
+  "detail": {
+    "code": "INSUFFICIENT_POST_GIFT_WINDOW",
+    "message": "증여일 기준 후 2개월 기간이 아직 지나지 않아 현재는 계산할 수 없습니다. 2026-01-06부터 다시 시도해 주세요.",
+    "available_from": "2026-01-06",
+    "gift_date": "2025-11-06"
+  }
 }
 ```
 

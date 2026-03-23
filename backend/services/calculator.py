@@ -14,20 +14,54 @@ from backend.models import (
 from backend.tax import engine as tax_engine
 
 
+class CalculationUnavailableError(Exception):
+    def __init__(self, gift_date: date, available_from: date):
+        self.gift_date = gift_date
+        self.available_from = available_from
+        super().__init__(
+            "증여일 기준 후 2개월 기간이 아직 지나지 않아 현재는 계산할 수 없습니다. "
+            f"{available_from.isoformat()}부터 다시 시도해 주세요."
+        )
+
+
+def get_stock_price_display_period(gift_date: date) -> tuple[date, date]:
+    period_start = gift_date - relativedelta(months=2) + timedelta(days=1)
+    period_end = gift_date + relativedelta(months=2) - timedelta(days=1)
+    return period_start, period_end
+
+
+def get_stock_price_fetch_period(gift_date: date) -> tuple[date, date]:
+    period_start, display_period_end = get_stock_price_display_period(gift_date)
+    return period_start, display_period_end + timedelta(days=1)
+
+
+def get_calculation_available_from(gift_date: date) -> date:
+    _, display_period_end = get_stock_price_display_period(gift_date)
+    return display_period_end + timedelta(days=1)
+
+
+def validate_calculation_availability(gift_date: date, today: date | None = None) -> None:
+    current_date = today or date.today()
+    available_from = get_calculation_available_from(gift_date)
+
+    if current_date < available_from:
+        raise CalculationUnavailableError(gift_date, available_from)
+
+
 def calculate_gift_amount(
     gift_date: date,
     ticker: str,
     qty: int,
     currency: str = "USD",
 ) -> StockGiftResult:
-    # 증여일 기준 전후 2개월
-    # 전: gift_date - 2개월 + 1일
-    # 후: gift_date + 2개월 - 1일
-    # Yahoo Finance가 end date를 포함하지 않으므로 +1일 추가
-    period_start = gift_date - relativedelta(months=2) + timedelta(days=1)
-    period_end = gift_date + relativedelta(months=2) - timedelta(days=1) + timedelta(days=1)
+    validate_calculation_availability(gift_date)
 
-    prices = scraper.get_stock_prices(ticker, period_start, period_end)
+    # 표시용 기간: 증여일 기준 전후 2개월
+    # 조회용 종료일은 Yahoo Finance가 end date를 포함하지 않으므로 +1일 추가
+    period_start, period_end = get_stock_price_display_period(gift_date)
+    _, fetch_period_end = get_stock_price_fetch_period(gift_date)
+
+    prices = scraper.get_stock_prices(ticker, period_start, fetch_period_end)
 
     if not prices:
         raise ValueError(f"No price data found for {ticker}")
