@@ -1,10 +1,9 @@
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
-from dateutil.relativedelta import relativedelta
-
 import pytest
+from dateutil.relativedelta import relativedelta
 
 from backend.services.calculator import (
     CalculationUnavailableError,

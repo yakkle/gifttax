@@ -212,6 +212,8 @@ USD → KRW 환율 조회
 - API 레이어는 요청/응답 처리만 담당한다
 - 작은 함수 단위로 구현한다
 - 테스트 가능한 구조로 작성한다
+- 커밋 전에는 항상 GitHub Actions workflow 와 동일한 lint 명령인 `ruff check .` 를 실행해 오류를 확인한다
+- `ruff check .` 오류가 있으면 먼저 수정한 뒤 커밋한다
 
 ---
 
