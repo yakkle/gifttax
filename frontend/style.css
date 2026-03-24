@@ -54,6 +54,23 @@ main {
     color: #2c3e50;
 }
 
+.date-help {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 0.92rem;
+    line-height: 1.4;
+    background: #eef6ff;
+    color: #24527a;
+    border: 1px solid #cfe3f5;
+}
+
+.date-help.warning {
+    background: #fff5ea;
+    color: #8a4b08;
+    border-color: #f5d3ac;
+}
+
 .form-group input[type="date"],
 .form-group input[type="text"],
 .form-group input[type="number"],

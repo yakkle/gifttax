@@ -66,6 +66,16 @@ async def calculate_gift(input_data: GiftCalculationInput) -> GiftCalculationRes
 
     except InvalidTickerError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except calculator.CalculationUnavailableError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INSUFFICIENT_POST_GIFT_WINDOW",
+                "message": str(e),
+                "available_from": e.available_from.isoformat(),
+                "gift_date": e.gift_date.isoformat(),
+            },
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

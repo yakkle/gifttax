@@ -58,18 +58,22 @@
 
 # 3. 주식 가격 기준
 
-주식 가격은 **증여일 기준 종가(Closing Price)** 를 사용한다.
+주식 가격은 **증여일 기준 전 2개월 + 1일부터 후 2개월 - 1일까지의 종가 평균**을 사용한다.
 
 StockPriceProvider 모듈이 해당 데이터를 제공한다.
+
+- 표시 기간: `gift_date - 2개월 + 1일` ~ `gift_date + 2개월 - 1일`
+- 외부 시세 API가 종료일 미포함 방식이면 integrations 레이어에서만 종료일 `+1일` 보정 가능
+- `gift_date + 2개월` 이전에는 계산하지 않고 계산 가능일을 안내한다
 
 예
 
 ticker: AAPL
-date: 2024-05-01
+gift_date: 2024-05-01
 
 result
 
-closing_price: 200
+average_closing_price: 200
 
 ---
 

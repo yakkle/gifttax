@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from dateutil.relativedelta import relativedelta
 from fastapi.testclient import TestClient
 
 from backend.integrations.scraper.yahoo import InvalidTickerError
@@ -81,6 +82,24 @@ class TestAPI:
 
         response = client.post("/api/calculate", json=payload)
         assert response.status_code == 422
+
+    def test_calculate_endpoint_rejects_recent_gift_date(self):
+        recent_gift_date = date.today() - relativedelta(months=1)
+        payload = {
+            "gift_date": recent_gift_date.isoformat(),
+            "stocks": [
+                {"ticker": "AAPL", "qty": 100, "currency": "USD"},
+            ],
+        }
+
+        response = client.post("/api/calculate", json=payload)
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert detail["code"] == "INSUFFICIENT_POST_GIFT_WINDOW"
+        assert detail["gift_date"] == recent_gift_date.isoformat()
+        assert "계산할 수 없습니다" in detail["message"]
+        assert detail["available_from"] > recent_gift_date.isoformat()
 
     def test_download_endpoint_not_found(self):
         response = client.get("/api/download/nonexistent-file")

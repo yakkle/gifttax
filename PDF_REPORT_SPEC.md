@@ -149,9 +149,10 @@ https://finance.yahoo.com/quote/{TICKER}/history/?period1={P1}&period2={P2}
 ```
 
 - `P1`: `period_start` Unix timestamp (초 단위, UTC 기준)
-- `P2`: `period_end` Unix timestamp (초 단위, UTC 기준)
+- `P2`: Yahoo 조회용 종료일 Unix timestamp (초 단위, UTC 기준)
 - `period_start` = 증여일 - 2개월 + 1일
 - `period_end` = 증여일 + 2개월 - 1일
+- Yahoo 조회 시 `P2` 는 종료일 미포함 특성 때문에 내부적으로 `period_end + 1일` 을 사용한다
 
 #### smbs.biz 환율 URL
 
