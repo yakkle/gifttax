@@ -71,12 +71,14 @@ function addStock() {
     row.innerHTML = `
         <input type="text" name="ticker" placeholder="종목코드 (예: AAPL)" required>
         <input type="number" name="qty" placeholder="수량" min="1" required>
-        <select name="currency">
-            <option value="USD" selected>USD</option>
-            <option value="EUR">EUR</option>
-            <option value="JPY">JPY</option>
-            <option value="GBP">GBP</option>
-        </select>
+        <div class="control-shell control-shell-select">
+            <select name="currency">
+                <option value="USD" selected>USD</option>
+                <option value="EUR">EUR</option>
+                <option value="JPY">JPY</option>
+                <option value="GBP">GBP</option>
+            </select>
+        </div>
         <button type="button" class="btn-remove" onclick="removeStock(this)">×</button>
     `;
     container.appendChild(row);

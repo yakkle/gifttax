@@ -16,9 +16,11 @@
 
         <main>
             <form id="gift-form">
-                <div class="form-group">
+                <div class="form-group form-group-date">
                     <label for="gift-date">증여일</label>
-                    <input type="date" id="gift-date" name="gift-date" required>
+                    <div class="control-shell control-shell-date">
+                        <input type="date" id="gift-date" name="gift-date" required>
+                    </div>
                     <p id="gift-date-help" class="date-help hidden" aria-live="polite"></p>
                 </div>
 
@@ -28,12 +30,14 @@
                         <div class="stock-row">
                             <input type="text" name="ticker" placeholder="종목코드 (예: AAPL)" required>
                             <input type="number" name="qty" placeholder="수량" min="1" required>
-                            <select name="currency">
-                                <option value="USD" selected>USD</option>
-                                <option value="EUR">EUR</option>
-                                <option value="JPY">JPY</option>
-                                <option value="GBP">GBP</option>
-                            </select>
+                            <div class="control-shell control-shell-select">
+                                <select name="currency">
+                                    <option value="USD" selected>USD</option>
+                                    <option value="EUR">EUR</option>
+                                    <option value="JPY">JPY</option>
+                                    <option value="GBP">GBP</option>
+                                </select>
+                            </div>
                             <button type="button" class="btn-remove" onclick="removeStock(this)">×</button>
                         </div>
                     </div>
