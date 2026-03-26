@@ -11,6 +11,16 @@ body {
     background-color: #f5f5f5;
 }
 
+:root {
+    --control-height: 48px;
+    --control-radius: 10px;
+    --control-border: #cfd8e3;
+    --control-border-focus: #3498db;
+    --control-bg: #ffffff;
+    --control-text: #2c3e50;
+    --control-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
 .container {
     max-width: 800px;
     margin: 0 auto;
@@ -47,6 +57,10 @@ main {
     margin-bottom: 20px;
 }
 
+.form-group-date {
+    margin-bottom: 24px;
+}
+
 .form-group label {
     display: block;
     font-weight: 600;
@@ -71,15 +85,129 @@ main {
     border-color: #f5d3ac;
 }
 
-.form-group input[type="date"],
 .form-group input[type="text"],
 .form-group input[type="number"],
 .form-group select {
     width: 100%;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    min-height: var(--control-height);
+    padding: 0 14px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--control-radius);
     font-size: 1rem;
+    color: var(--control-text);
+    background: var(--control-bg);
+    box-shadow: var(--control-shadow);
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"] {
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.control-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: var(--control-height);
+    border: 1px solid var(--control-border);
+    border-radius: var(--control-radius);
+    background: var(--control-bg);
+    box-shadow: var(--control-shadow);
+    overflow: hidden;
+}
+
+.control-shell::after {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6b7a90;
+    pointer-events: none;
+}
+
+.control-shell:focus-within {
+    border-color: var(--control-border-focus);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.18);
+}
+
+.control-shell input,
+.control-shell select {
+    width: 100%;
+    min-height: calc(var(--control-height) - 2px);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+}
+
+.control-shell input:focus,
+.control-shell select:focus,
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus {
+    outline: none;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus {
+    border-color: var(--control-border-focus);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.18);
+}
+
+.control-shell-date::after {
+    content: "";
+    width: 14px;
+    height: 12px;
+    border: 2px solid currentColor;
+    border-radius: 3px;
+    background:
+        linear-gradient(currentColor, currentColor) center 3px / 100% 2px no-repeat,
+        linear-gradient(currentColor, currentColor) 3px 0 / 2px 4px no-repeat,
+        linear-gradient(currentColor, currentColor) calc(100% - 3px) 0 / 2px 4px no-repeat;
+}
+
+.control-shell-select::after {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-65%) rotate(45deg);
+}
+
+.control-shell-date input[type="date"] {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0 44px 0 14px;
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--control-text);
+}
+
+.control-shell-date input[type="date"]::-webkit-date-and-time-value {
+    font-size: inherit;
+    line-height: inherit;
+    text-align: left;
+}
+
+.control-shell-date input[type="date"]::-webkit-calendar-picker-indicator {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 48px;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.control-shell-select select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0 40px 0 14px;
 }
 
 .stock-row {
@@ -97,7 +225,7 @@ main {
     flex: 1;
 }
 
-.stock-row select {
+.stock-row .control-shell-select {
     flex: 1;
 }
 
@@ -337,6 +465,71 @@ main {
 
 /* 모바일 반응형 */
 @media (max-width: 480px) {
+    .container {
+        padding: 14px;
+    }
+
+    header,
+    main {
+        padding: 18px;
+    }
+
+    .form-group {
+        margin-bottom: 18px;
+    }
+
+    .stock-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 96px 36px;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .stock-row input[type="text"],
+    .stock-row input[type="number"],
+    .stock-row .control-shell-select {
+        width: 100%;
+    }
+
+    .stock-row input[type="text"] {
+        grid-column: 1 / 3;
+        grid-row: 1;
+    }
+
+    .stock-row input[type="number"] {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    .stock-row .control-shell-select {
+        grid-column: 2 / 4;
+        grid-row: 2;
+    }
+
+    .stock-row .btn-remove {
+        grid-column: 3;
+        grid-row: 1;
+        justify-self: end;
+        width: 36px;
+        min-width: 36px;
+        min-height: 36px;
+        height: 36px;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+
+    .control-shell-date,
+    .control-shell-select,
+    .form-group input[type="text"],
+    .form-group input[type="number"] {
+        min-height: 50px;
+    }
+
+    .control-shell-date input[type="date"],
+    .control-shell-date input[type="date"]::-webkit-date-and-time-value {
+        font-size: 16px;
+    }
+
     .disclaimer-short {
         font-size: 0.8rem;
     }
