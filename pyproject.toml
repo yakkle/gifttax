@@ -5,7 +5,7 @@ description = "해외주식 증여 금액 계산기"
 requires-python = ">=3.13"
 license = "MIT"
 authors = [
-    {name = "StockTax", email = "info@stocktax.example.com"}
+    {name = "yakkle", email = "yakkle@gmail.com"}
 ]
 
 dependencies = [
