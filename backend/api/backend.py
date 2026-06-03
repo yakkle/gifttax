@@ -14,12 +14,12 @@ from backend.pdf.generator import exchange_rate_pdf as pdf_generator
 from backend.pdf.generator import gift_calculation_pdf as gift_pdf_generator
 from backend.services import calculator
 
-router = APIRouter(prefix="/api")
+r = backend_router = APIRouter(prefix="/api")
 
 STORAGE_DIR = "/tmp/gifttax"
 
 
-@router.get("/health")
+@r.get("/health")
 async def health_check():
     return {"status": "ok"}
 
@@ -38,7 +38,7 @@ def _delete_pdf(file_id: str) -> None:
     Path(STORAGE_DIR, f"{file_id}.pdf").unlink(missing_ok=True)
 
 
-@router.post("/calculate")
+@r.post("/calculate")
 async def calculate_gift(input_data: GiftCalculationInput) -> GiftCalculationResult:
     # 프론트엔드에서 이전 계산의 file_id를 전달하면 해당 파일을 먼저 정리한다
     try:
@@ -80,7 +80,7 @@ async def calculate_gift(input_data: GiftCalculationInput) -> GiftCalculationRes
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/download/{file_id}")
+@r.get("/download/{file_id}")
 async def download_file(file_id: str):
     file_path = Path(STORAGE_DIR) / f"{file_id}.pdf"
     if not file_path.exists():
@@ -94,7 +94,7 @@ async def download_file(file_id: str):
     )
 
 
-@router.delete("/download/{file_id}", status_code=204)
+@r.delete("/download/{file_id}", status_code=204)
 async def delete_file(file_id: str):
     """미다운로드 PDF 파일을 삭제한다. 파일이 없어도 성공으로 처리한다."""
     _delete_pdf(file_id)

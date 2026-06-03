@@ -112,7 +112,7 @@ class TestAPI:
             pdf_path = Path(tmpdir) / f"{file_id}.pdf"
             pdf_path.write_bytes(b"%PDF-1.4 test content")
 
-            with patch("backend.api.router.STORAGE_DIR", tmpdir):
+            with patch("backend.api.backend.STORAGE_DIR", tmpdir):
                 response = client.get(f"/api/download/{file_id}")
 
             assert response.status_code == 200
@@ -125,7 +125,7 @@ class TestAPI:
             pdf_path = Path(tmpdir) / f"{file_id}.pdf"
             pdf_path.write_bytes(b"%PDF-1.4 test content")
 
-            with patch("backend.api.router.STORAGE_DIR", tmpdir):
+            with patch("backend.api.backend.STORAGE_DIR", tmpdir):
                 first = client.get(f"/api/download/{file_id}")
                 second = client.get(f"/api/download/{file_id}")
 
@@ -139,7 +139,7 @@ class TestAPI:
             pdf_path = Path(tmpdir) / f"{file_id}.pdf"
             pdf_path.write_bytes(b"%PDF-1.4 test content")
 
-            with patch("backend.api.router.STORAGE_DIR", tmpdir):
+            with patch("backend.api.backend.STORAGE_DIR", tmpdir):
                 response = client.delete(f"/api/download/{file_id}")
 
             assert response.status_code == 204
@@ -158,7 +158,7 @@ class TestAPI:
             (Path(tmpdir) / f"{gift_file_id}.pdf").write_bytes(b"%PDF-1.4 gift")
             (Path(tmpdir) / f"{rate_file_id}.pdf").write_bytes(b"%PDF-1.4 rate")
 
-            with patch("backend.api.router.STORAGE_DIR", tmpdir):
+            with patch("backend.api.backend.STORAGE_DIR", tmpdir):
                 # 프론트엔드가 재계산 전 이전 file_id를 DELETE로 정리
                 r1 = client.delete(f"/api/download/{gift_file_id}")
                 r2 = client.delete(f"/api/download/{rate_file_id}")
