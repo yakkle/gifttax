@@ -19,15 +19,25 @@
                 >
                     <img src="https://cdn.simpleicons.org/github" alt="" width="22" height="22" loading="lazy">
                 </a>
-                <a class="social-link support-link"
-                    href="https://github.com/sponsors/yakkle"
-                    target="_blank" rel="noopener noreferrer"
-                    aria-label="GitHub Sponsors"
-                    title="GitHub Sponsors"
-                >
-                    <img src="https://cdn.simpleicons.org/githubsponsors/EA4AAA" alt="" width="20" height="20" loading="lazy">
-                    <span>후원하기</span>
-                </a>
+                <div id="support-dropdown" class="support-dropdown">
+                    <button id="support-toggle" class="social-link support-link" type="button"
+                        aria-expanded="false" aria-controls="support-menu"
+                    >
+                        <img src="https://cdn.simpleicons.org/githubsponsors/EA4AAA" alt="" width="20" height="20" loading="lazy">
+                        <span>후원하기</span>
+                        <svg class="support-chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                            <path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <nav id="support-menu" class="support-menu" aria-label="후원 방법" hidden>
+                        <a href="https://fairy.hada.io/@opentax" target="_blank" rel="noopener noreferrer">
+                            Fairy에서 후원하기 <span aria-hidden="true">↗</span><span class="visually-hidden"> (새 탭에서 열림)</span>
+                        </a>
+                        <a href="https://github.com/sponsors/yakkle" target="_blank" rel="noopener noreferrer">
+                            GitHub Sponsors <span aria-hidden="true">↗</span><span class="visually-hidden"> (새 탭에서 열림)</span>
+                        </a>
+                    </nav>
+                </div>
             </div>
 
             <h1>GiftTax</h1>

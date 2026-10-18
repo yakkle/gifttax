@@ -260,10 +260,52 @@ async function deletePreviousFiles(giftPdfFileId, ratePdfFileId) {
 let previousGiftPdfFileId = null;
 let previousRatePdfFileId = null;
 
+function initSupportMenu() {
+    const dropdown = document.getElementById("support-dropdown");
+    const toggle = document.getElementById("support-toggle");
+    const menu = document.getElementById("support-menu");
+
+    function setOpen(open) {
+        toggle.setAttribute("aria-expanded", String(open));
+        menu.hidden = !open;
+    }
+
+    toggle.addEventListener("click", () => setOpen(menu.hidden));
+
+    document.addEventListener("click", (event) => {
+        if (!dropdown.contains(event.target)) {
+            setOpen(false);
+        }
+    });
+
+    dropdown.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !menu.hidden) {
+            event.preventDefault();
+            setOpen(false);
+            toggle.focus();
+        }
+    });
+
+    dropdown.addEventListener("focusout", (event) => {
+        if (!dropdown.contains(event.relatedTarget)) {
+            setOpen(false);
+        }
+    });
+
+    menu.addEventListener("click", (event) => {
+        if (event.target.closest("a")) {
+            setOpen(false);
+            toggle.focus();
+        }
+    });
+}
+
 function initApp() {
     if (typeof document === "undefined") {
         return;
     }
+
+    initSupportMenu();
 
     document.getElementById("gift-date").addEventListener("change", updateGiftDateHelp);
     document.getElementById("gift-date").addEventListener("input", updateGiftDateHelp);
