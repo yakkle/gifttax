@@ -1,7 +1,7 @@
 # 후기·관리자 데이터 저장소
 
 이 문서는 커밋별로 추가되는 후기 기능의 운영 설정을 설명한다.
-현재 단계에서는 저장소·데이터 계약·자동 정리만 제공한다.
+현재 단계에서는 SQLAlchemy ORM·Alembic 기반 저장소·데이터 계약·자동 정리를 제공한다.
 의견 제출 API, 통계 수집, 관리자 로그인과 관리 화면은 후속 단계에서 추가한다.
 
 ## 저장 경로와 설정
@@ -30,12 +30,51 @@ DB와 `-wal`, `-shm` 파일은 Git에서 제외한다. 환경변수 외부에 �
 실패하면 오류를 기록하고 기존 계산·다운로드 서비스를 계속 제공하며,
 설정된 간격으로 초기화와 정리를 재시도한다. 현재 단계에서 입력·계산 정보는 DB에 저장하지 않는다.
 
-스키마는 `PRAGMA user_version`으로 관리한다. 마이그레이션은 한 트랜잭션으로
-적용하며, 실패하면 테이블 변경과 버전 변경 모두 되돌린다. 향후 변경은 새 버전으로
-추가하고 적용된 마이그레이션은 수정하지 않는다. 더 높은 스키마 버전의 DB는
-구버전 앱이 수정하지 않으며, 앱 로그에 저장소 오류를 기록한다.
+DB 모델은 `backend/storage/models.py`, 요청·응답용 Pydantic 계약은
+`backend/models/feedback.py`에 따로 정의한다. 일반 데이터 처리는
+`Database.session(write=True)`에서 ORM 객체를 추가·조회·변경하는 방식으로 수행한다.
+정상 종료하면 커밋하고 예외가 발생하면 롤백한다. 세션을 요청·작업 간에 공유하지 않으며,
+ORM 객체를 API에 직접 반환하지 않고 세션 안에서 응답 계약으로 변환한다.
 
-SQLite WAL 모드를 사용하고 작업별로 독립된 연결을 연다.
+스키마 이력은 Alembic의 `alembic_version`으로 관리한다.
+앱 시작 시 `upgrade head`를 실행하며 테이블 변경과 버전 변경을 한 트랜잭션으로
+처리한다. 실패하면 함께 되돌린다. 알 수 없는 Alembic revision이나 기존 스키마를
+발견하면 자동으로 덮어쓰거나 downgrade하지 않고 저장소 오류를 기록한다.
+
+태스크 1에서 생성한 DB(`PRAGMA user_version = 1`)는 원본 테이블·인덱스 정의가
+보존된 스냅샷과 일치하고 추가 트리거·뷰 등이 없을 때만 편입한다. `0001`은 기존 테이블을 유지하고,
+`0002`는 SQLAlchemy가 인라인 외래 키의 `ON DELETE CASCADE`를 제대로 읽도록
+연락처 테이블 하나를 데이터·CHECK·외래 키·인덱스·STRICT 속성을 보존하며 재작성한다.
+나머지 테이블은 재생성하지 않는다. 새 DB는 같은 Alembic 이력으로 초기화한다.
+편입 후 `user_version` 값은 과거 버전 표시로만 남으며, 이후 스키마 변경은 Alembic으로 관리한다.
+`backend/storage/migrations.py`는 기존 DB 검증용 불변 스냅샷이므로 수정하지 않는다.
+
+로컬에서는 프로젝트 루트에서 아래 명령을 사용한다. 앱과 같은
+`GIFTTAX_DATABASE_PATH`를 지정해야 한다.
+
+```bash
+# 의존성 설치
+uv pip install -e '.[dev]'
+
+# 적용 상태 확인 및 최신 스키마 적용
+uv run --no-sync alembic current
+uv run --no-sync alembic upgrade head
+
+# ORM 모델과 적용된 스키마 비교
+uv run --no-sync alembic check
+
+# 이후 모델 변경에 대한 마이그레이션 초안 생성
+uv run --no-sync alembic revision --autogenerate -m 'describe schema change'
+```
+
+생성된 마이그레이션은 검토한 뒤 커밋한다. 자동 생성이 모든 제약조건 변경이나
+컬럼 이름 변경을 정확히 판단하지는 않으므로 생성 결과와 데이터 보존을 테스트한다.
+운영에서는 앱 초기화가 마이그레이션을 실행하므로 `alembic.ini` 없이도 동작한다.
+컨테이너에는 CLI 설정도 포함하므로
+`docker compose exec gifttax alembic current`로 상태를 확인할 수 있다.
+`downgrade base`는 후기·인증 테이블과 데이터를 삭제하므로 빈 테스트 DB에서만 사용한다.
+
+SQLite WAL 모드와 SQLAlchemy 동기 세션을 사용하고 작업별로 독립된 연결을 연다.
 쓰기 트랜잭션은 `BEGIN IMMEDIATE`로 직렬화하며 잠금 대기는 최대 5초다.
 외래 키를 모든 연결에서 활성화한다. 단일 서버의 로컬 영속 볼륨을 기준으로 하며,
 여러 서버가 공유하는 네트워크 파일시스템에서 사용하지 않는다.

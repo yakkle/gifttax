@@ -3,11 +3,38 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from time import monotonic, sleep
 
-from backend.storage.migrations import MIGRATIONS, SCHEMA_VERSION
+from alembic import command
+from sqlalchemy import URL, Connection, create_engine, delete, event
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import ConnectionPoolEntry, NullPool
+
+from backend.storage.models import (
+    AdminChallenge,
+    AdminOneTimeToken,
+    AdminSession,
+    Feedback,
+    FeedbackContact,
+    UsageEvent,
+)
+from backend.storage.schema import UnsupportedSchemaVersionError as UnsupportedSchemaVersionError
+from backend.storage.schema import migration_config
 
 SQLITE_TIMEOUT_SECONDS = 5
+_MIGRATION_LOCK = RLock()
+
+
+def _configure_sqlite(connection: sqlite3.Connection, _: ConnectionPoolEntry) -> None:
+    # SQLAlchemy owns BEGIN, including transactional DDL and immediate writes.
+    connection.isolation_level = None
+    connection.execute("PRAGMA foreign_keys = ON")
+
+
+def _begin_sqlite(connection: Connection) -> None:
+    immediate = connection.get_execution_options().get("sqlite_write", False)
+    connection.exec_driver_sql("BEGIN IMMEDIATE" if immediate else "BEGIN")
 
 
 def _enable_wal(connection: sqlite3.Connection) -> None:
@@ -26,10 +53,6 @@ def _enable_wal(connection: sqlite3.Connection) -> None:
             sleep(0.01)
 
 
-class UnsupportedSchemaVersionError(RuntimeError):
-    """The database was created by a newer application; do not downgrade it."""
-
-
 @dataclass(frozen=True)
 class PurgeResult:
     contacts: int
@@ -43,69 +66,59 @@ class PurgeResult:
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = path
-
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(
-            self.path, timeout=SQLITE_TIMEOUT_SECONDS, isolation_level=None
+        self.engine = create_engine(
+            URL.create("sqlite+pysqlite", database=str(path)),
+            connect_args={"timeout": SQLITE_TIMEOUT_SECONDS, "check_same_thread": False},
+            poolclass=NullPool,
+            hide_parameters=True,
         )
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        return connection
+        event.listen(self.engine, "connect", _configure_sqlite)
+        event.listen(self.engine, "begin", _begin_sqlite)
 
     @contextmanager
-    def transaction(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
-        """Each operation owns a connection; writers wait up to five seconds."""
-        connection = self._connect()
+    def session(self, *, write: bool = False) -> Iterator[Session]:
+        """Own one ORM session/transaction; roll back automatically on failure."""
+        with Session(self.engine) as session, session.begin():
+            session.connection(execution_options={"sqlite_write": write})
+            yield session
+
+    @contextmanager
+    def migration_connection(self) -> Iterator[Connection]:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        raw = self.engine.raw_connection()
         try:
-            connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
-            yield connection
-            connection.commit()
-        except BaseException:
-            connection.rollback()
-            raise
+            _enable_wal(raw.driver_connection)
         finally:
-            connection.close()
+            raw.close()
+        with self.engine.connect().execution_options(sqlite_write=True) as connection:
+            with connection.begin():
+                yield connection
 
     def initialize(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        connection = self._connect()
-        try:
-            _enable_wal(connection)
-        finally:
-            connection.close()
+        # Alembic's command context is process-global; serialize in-process runs.
+        with _MIGRATION_LOCK, self.migration_connection() as connection:
+            config = migration_config()
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
 
-        with self.transaction(write=True) as connection:
-            version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version > SCHEMA_VERSION:
-                raise UnsupportedSchemaVersionError(
-                    f"Database schema {version} exceeds supported version {SCHEMA_VERSION}"
-                )
-            for target_version in range(version + 1, SCHEMA_VERSION + 1):
-                for statement in MIGRATIONS[target_version]:
-                    connection.execute(statement)
-                connection.execute(f"PRAGMA user_version = {target_version}")
+    def dispose(self) -> None:
+        self.engine.dispose()
 
-    def purge_expired(
-        self, *, now: int, feedback_before: int, usage_before: int
-    ) -> PurgeResult:
+    def purge_expired(self, *, now: int, feedback_before: int, usage_before: int) -> PurgeResult:
         """Apply service-provided cutoffs atomically, retaining daily aggregates."""
-        with self.transaction(write=True) as connection:
-            contacts = connection.execute(
-                "DELETE FROM feedback_contacts WHERE expires_at <= ?", (now,)
-            ).rowcount
-            feedback = connection.execute(
-                "DELETE FROM feedback WHERE created_at <= ?", (feedback_before,)
-            ).rowcount
-            usage_events = connection.execute(
-                "DELETE FROM usage_events WHERE occurred_at <= ?", (usage_before,)
-            ).rowcount
-            sessions = connection.execute(
-                "DELETE FROM admin_sessions WHERE expires_at <= ?", (now,)
-            ).rowcount
-            tokens = connection.execute(
-                "DELETE FROM admin_one_time_tokens WHERE expires_at <= ?", (now,)
-            ).rowcount
-            challenges = connection.execute(
-                "DELETE FROM admin_challenges WHERE expires_at <= ?", (now,)
-            ).rowcount
-        return PurgeResult(contacts, feedback, usage_events, sessions, tokens, challenges)
+        statements = (
+            delete(FeedbackContact).where(FeedbackContact.expires_at <= now),
+            delete(Feedback).where(Feedback.created_at <= feedback_before),
+            delete(UsageEvent).where(UsageEvent.occurred_at <= usage_before),
+            delete(AdminSession).where(AdminSession.expires_at <= now),
+            delete(AdminOneTimeToken).where(AdminOneTimeToken.expires_at <= now),
+            delete(AdminChallenge).where(AdminChallenge.expires_at <= now),
+        )
+        with self.session(write=True) as session:
+            counts = [
+                session.execute(
+                    statement, execution_options={"synchronize_session": False}
+                ).rowcount
+                for statement in statements
+            ]
+        return PurgeResult(*counts)

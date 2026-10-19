@@ -7,15 +7,32 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from alembic.operations import Operations
+from alembic.script import ScriptDirectory
+from alembic.util import CommandError
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 
 from backend.main import app
 from backend.models.feedback import ClientUsageEvent, FeedbackCreate, UsageEventType
 from backend.services.retention import cleanup_expired_data, email_expiry, maintain_storage
 from backend.settings import Settings
-from backend.storage.database import Database, UnsupportedSchemaVersionError, _enable_wal
-from backend.storage.migrations import SCHEMA_VERSION
+from backend.storage.database import Database, _enable_wal
+from backend.storage.models import (
+    AdminAccount,
+    AdminChallenge,
+    AdminCredential,
+    AdminOneTimeToken,
+    AdminSession,
+    Base,
+    DailyUsageCount,
+    Feedback,
+    FeedbackContact,
+    UsageEvent,
+)
+from backend.storage.schema import migration_config
 
 NOW = datetime(2026, 10, 19, 3, tzinfo=UTC)
 
@@ -29,70 +46,83 @@ def database(tmp_path: Path) -> Database:
 
 def insert_feedback(database: Database, created_at: datetime = NOW) -> str:
     feedback_id = str(uuid4())
-    with database.transaction(write=True) as connection:
-        connection.execute(
-            """INSERT INTO feedback (id, category, message, source, created_at)
-               VALUES (?, 'review', '의견입니다', 'general', ?)""",
-            (feedback_id, int(created_at.timestamp())),
+    with database.session(write=True) as session:
+        session.add(
+            Feedback(
+                id=feedback_id,
+                category="review",
+                message="의견입니다",
+                source="general",
+                created_at=int(created_at.timestamp()),
+            )
         )
     return feedback_id
 
 
 def add_contact(database: Database, feedback_id: str, consented_at: datetime) -> None:
-    with database.transaction(write=True) as connection:
-        connection.execute(
-            "INSERT INTO feedback_contacts VALUES (?, ?, ?, ?)",
-            (
-                feedback_id,
-                "reader@example.com",
-                int(consented_at.timestamp()),
-                int(email_expiry(consented_at).timestamp()),
-            ),
+    with database.session(write=True) as session:
+        session.add(
+            FeedbackContact(
+                feedback_id=feedback_id,
+                email="reader@example.com",
+                consented_at=int(consented_at.timestamp()),
+                expires_at=int(email_expiry(consented_at).timestamp()),
+            )
         )
 
 
 def row_count(database: Database, table: str) -> int:
-    with database.transaction() as connection:
-        return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    with database.session() as session:
+        return session.scalar(select(func.count()).select_from(Base.metadata.tables[table]))
 
 
 def test_initialize_persists_data_and_is_idempotent(database: Database) -> None:
     feedback_id = insert_feedback(database)
     reopened = Database(database.path)
     reopened.initialize()
-    with reopened.transaction() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
-        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-        assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-        row = connection.execute("SELECT * FROM feedback WHERE id = ?", (feedback_id,)).fetchone()
-        assert row["message"] == "의견입니다"
-        assert row["status"] == "new"
+    with reopened.session() as session:
+        connection = session.connection()
+        head = ScriptDirectory.from_config(migration_config()).get_current_head()
+        assert session.scalar(text("SELECT version_num FROM alembic_version")) == head
+        assert connection.exec_driver_sql("PRAGMA journal_mode").scalar_one() == "wal"
+        assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
+        row = session.get(Feedback, feedback_id)
+        assert row.message == "의견입니다"
+        assert row.status == "new"
 
 
 def test_migration_failure_rolls_back_schema_and_version(tmp_path: Path) -> None:
     database = Database(tmp_path / "feedback.sqlite3")
+    original = Operations.create_table
+
+    def failing_create_table(operations, name, *args, **kwargs):
+        table = original(operations, name, *args, **kwargs)
+        if name == "admin_challenges":
+            raise RuntimeError("simulated migration failure")
+        return table
+
     with (
-        patch.dict(
-            "backend.storage.database.MIGRATIONS",
-            {1: ("CREATE TABLE partial (id INTEGER)", "NOT VALID SQL")},
-        ),
-        pytest.raises(sqlite3.OperationalError),
+        patch.object(Operations, "create_table", failing_create_table),
+        pytest.raises(RuntimeError, match="simulated migration failure"),
     ):
         database.initialize()
-    with database.transaction() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT name FROM sqlite_master WHERE name = 'partial'"
-        ).fetchone() is None
+    with database.engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 0
+        assert (
+            connection.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            ).all()
+            == []
+        )
     database.initialize()
     assert row_count(database, "feedback") == 0
 
 
 def test_newer_schema_is_rejected_without_losing_data(database: Database) -> None:
     insert_feedback(database)
-    with database.transaction(write=True) as connection:
-        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
-    with pytest.raises(UnsupportedSchemaVersionError):
+    with database.session(write=True) as session:
+        session.execute(text("UPDATE alembic_version SET version_num = 'unknown_future_revision'"))
+    with pytest.raises(CommandError, match="Can't locate revision"):
         database.initialize()
     assert row_count(database, "feedback") == 1
 
@@ -107,7 +137,7 @@ def test_concurrent_initialization_is_safe(tmp_path: Path) -> None:
 def test_wal_setup_retries_a_temporary_lock(database: Database) -> None:
     error = sqlite3.OperationalError("database is locked")
     error.sqlite_errorcode = sqlite3.SQLITE_BUSY
-    with database.transaction() as connection:
+    with sqlite3.connect(database.path) as connection:
         wrapped = MagicMock(wraps=connection)
         wrapped.execute.side_effect = [error, connection.execute("PRAGMA journal_mode")]
         _enable_wal(wrapped)
@@ -122,53 +152,66 @@ def test_wal_setup_does_not_hide_permanent_errors() -> None:
 
 def test_concurrent_writes_keep_events_and_counts_consistent(database: Database) -> None:
     def record_event(_: int) -> None:
-        with database.transaction(write=True) as connection:
-            connection.execute(
-                "INSERT INTO usage_events (event_id, event_type, occurred_at) VALUES (?, ?, ?)",
-                (str(uuid4()), "page_view", int(NOW.timestamp())),
+        with database.session(write=True) as session:
+            session.add(
+                UsageEvent(
+                    event_id=str(uuid4()), event_type="page_view", occurred_at=int(NOW.timestamp())
+                )
             )
-            connection.execute(
-                """INSERT INTO daily_usage_counts VALUES ('2026-10-19', 'page_view', 1)
-                   ON CONFLICT (day, event_type)
-                   DO UPDATE SET event_count = event_count + 1"""
-            )
+            daily = session.get(DailyUsageCount, ("2026-10-19", "page_view"))
+            if daily is None:
+                session.add(
+                    DailyUsageCount(day="2026-10-19", event_type="page_view", event_count=1)
+                )
+            else:
+                daily.event_count += 1
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(record_event, range(40)))
     assert row_count(database, "usage_events") == 40
-    with database.transaction() as connection:
-        assert connection.execute("SELECT event_count FROM daily_usage_counts").fetchone()[0] == 40
+    with database.session() as session:
+        assert session.scalar(select(DailyUsageCount.event_count)) == 40
 
 
 def test_transaction_rolls_back_related_writes(database: Database) -> None:
-    with pytest.raises(sqlite3.IntegrityError), database.transaction(write=True) as connection:
-        connection.execute(
-            """INSERT INTO feedback (id, satisfaction, category, source, created_at)
-               VALUES ('first', 'satisfied', 'review', 'result', ?)""",
-            (int(NOW.timestamp()),),
+    with pytest.raises(IntegrityError), database.session(write=True) as session:
+        session.add(
+            Feedback(
+                id="first",
+                satisfaction="satisfied",
+                category="review",
+                source="result",
+                created_at=int(NOW.timestamp()),
+            )
         )
-        connection.execute(
-            "INSERT INTO feedback_contacts VALUES ('missing', 'reader@example.com', 1, 2)"
+        session.flush()
+        session.add(
+            FeedbackContact(
+                feedback_id="missing", email="reader@example.com", consented_at=1, expires_at=2
+            )
         )
     assert row_count(database, "feedback") == 0
 
 
 def test_feedback_submission_id_is_unique(database: Database) -> None:
     feedback_id = insert_feedback(database)
-    with pytest.raises(sqlite3.IntegrityError), database.transaction(write=True) as connection:
-        connection.execute(
-            """INSERT INTO feedback (id, satisfaction, category, source, created_at)
-               VALUES (?, 'satisfied', 'review', 'result', ?)""",
-            (feedback_id, int(NOW.timestamp())),
+    with pytest.raises(IntegrityError), database.session(write=True) as session:
+        session.add(
+            Feedback(
+                id=feedback_id,
+                satisfaction="satisfied",
+                category="review",
+                source="result",
+                created_at=int(NOW.timestamp()),
+            )
         )
     assert row_count(database, "feedback") == 1
 
 
 def test_empty_feedback_is_rejected_by_storage(database: Database) -> None:
-    with pytest.raises(sqlite3.IntegrityError), database.transaction(write=True) as connection:
-        connection.execute(
-            """INSERT INTO feedback (id, category, message, source, created_at)
-               VALUES ('empty', 'review', '   ', 'general', 0)"""
+    with pytest.raises(IntegrityError), database.session(write=True) as session:
+        session.add(
+            Feedback(id="empty", category="review", message="   ", source="general", created_at=0)
         )
 
 
@@ -176,11 +219,11 @@ def test_deleting_feedback_cascades_only_its_contact(database: Database) -> None
     first, second = insert_feedback(database), insert_feedback(database)
     add_contact(database, first, NOW)
     add_contact(database, second, NOW)
-    with database.transaction(write=True) as connection:
-        connection.execute("DELETE FROM feedback WHERE id = ?", (first,))
+    with database.session(write=True) as session:
+        session.delete(session.get(Feedback, first))
     assert row_count(database, "feedback_contacts") == 1
-    with database.transaction() as connection:
-        assert connection.execute("SELECT feedback_id FROM feedback_contacts").fetchone()[0] == second
+    with database.session() as session:
+        assert session.scalar(select(FeedbackContact.feedback_id)) == second
 
 
 def test_retention_removes_expired_contacts_but_keeps_feedback(database: Database) -> None:
@@ -191,8 +234,8 @@ def test_retention_removes_expired_contacts_but_keeps_feedback(database: Databas
     assert result.contacts == 1
     assert result.feedback == 0
     assert row_count(database, "feedback") == 2
-    with database.transaction() as connection:
-        assert connection.execute("SELECT feedback_id FROM feedback_contacts").fetchone()[0] == current
+    with database.session() as session:
+        assert session.scalar(select(FeedbackContact.feedback_id)) == current
 
 
 def test_retention_uses_calendar_year_and_preserves_recent_feedback(database: Database) -> None:
@@ -208,41 +251,56 @@ def test_retention_uses_calendar_year_and_preserves_recent_feedback(database: Da
 
 def test_retention_deletes_raw_events_and_preserves_daily_totals(database: Database) -> None:
     cutoff = int((NOW - timedelta(days=90)).timestamp())
-    with database.transaction(write=True) as connection:
+    with database.session(write=True) as session:
         for occurred_at in (cutoff, cutoff + 1):
-            connection.execute(
-                "INSERT INTO usage_events (event_id, event_type, visitor_id, occurred_at) VALUES (?, ?, ?, ?)",
-                (str(uuid4()), "page_view", str(uuid4()), occurred_at),
+            session.add(
+                UsageEvent(
+                    event_id=str(uuid4()),
+                    event_type="page_view",
+                    visitor_id=str(uuid4()),
+                    occurred_at=occurred_at,
+                )
             )
-        connection.execute("INSERT INTO daily_usage_counts VALUES ('2026-07-21', 'page_view', 2)")
+        session.add(DailyUsageCount(day="2026-07-21", event_type="page_view", event_count=2))
     result = cleanup_expired_data(database, now=NOW)
     assert result.usage_events == 1
     assert row_count(database, "usage_events") == 1
-    with database.transaction() as connection:
-        assert connection.execute("SELECT event_count FROM daily_usage_counts").fetchone()[0] == 2
+    with database.session() as session:
+        assert session.scalar(select(DailyUsageCount.event_count)) == 2
 
 
 def test_retention_cleans_expired_auth_artifacts_but_keeps_credentials(database: Database) -> None:
     now = int(NOW.timestamp())
-    with database.transaction(write=True) as connection:
-        connection.execute("INSERT INTO admin_account VALUES (1, ?, ?)", (b"user", now - 100))
-        connection.execute(
-            """INSERT INTO admin_credentials
-               (credential_id, admin_id, public_key, sign_count, label, created_at)
-               VALUES (?, 1, ?, 0, 'test', ?)""",
-            (b"credential", b"public-key", now - 100),
+    with database.session(write=True) as session:
+        account = AdminAccount(id=1, user_handle=b"user", created_at=now - 100)
+        account.credentials.append(
+            AdminCredential(
+                credential_id=b"credential",
+                public_key=b"public-key",
+                sign_count=0,
+                label="test",
+                created_at=now - 100,
+            )
         )
+        session.add(account)
         for suffix, expiry in (("expired", now), ("live", now + 1)):
-            connection.execute(
-                "INSERT INTO admin_sessions VALUES (?, 1, ?, ?)", (suffix, now - 100, expiry)
+            account.sessions.append(
+                AdminSession(session_id=suffix, created_at=now - 100, expires_at=expiry)
             )
-            connection.execute(
-                "INSERT INTO admin_one_time_tokens VALUES (?, 'login', ?, ?)",
-                (suffix, now - 100, expiry),
+            session.add(
+                AdminOneTimeToken(
+                    token_hash=suffix, purpose="login", created_at=now - 100, expires_at=expiry
+                )
             )
-            connection.execute(
-                "INSERT INTO admin_challenges VALUES (?, ?, 'authentication', ?, ?, ?)",
-                (suffix, b"challenge", "binding-hash", now - 100, expiry),
+            session.add(
+                AdminChallenge(
+                    challenge_id=suffix,
+                    challenge=b"challenge",
+                    purpose="authentication",
+                    binding_hash="binding-hash",
+                    created_at=now - 100,
+                    expires_at=expiry,
+                )
             )
     result = cleanup_expired_data(database, now=NOW)
     assert (result.sessions, result.tokens, result.challenges) == (1, 1, 1)
@@ -255,12 +313,12 @@ def test_retention_cleans_expired_auth_artifacts_but_keeps_credentials(database:
 def test_retention_failure_rolls_back_all_deletions(database: Database) -> None:
     feedback_id = insert_feedback(database, NOW - timedelta(days=400))
     add_contact(database, feedback_id, NOW - timedelta(days=100))
-    with database.transaction(write=True) as connection:
-        connection.execute(
+    with database.session(write=True) as session:
+        session.connection().exec_driver_sql(
             """CREATE TRIGGER fail_cleanup BEFORE DELETE ON feedback
                BEGIN SELECT RAISE(ABORT, 'simulated failure'); END"""
         )
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(IntegrityError):
         cleanup_expired_data(database, now=NOW)
     assert row_count(database, "feedback") == 1
     assert row_count(database, "feedback_contacts") == 1
@@ -297,9 +355,12 @@ def test_feedback_contract_limits_fields_and_normalizes_text() -> None:
 def test_clients_cannot_report_server_calculation_events() -> None:
     with pytest.raises(ValidationError):
         ClientUsageEvent(event_id=uuid4(), event_type=UsageEventType.CALCULATION_SUCCESS)
-    assert ClientUsageEvent(
-        event_id=uuid4(), event_type="support_click", source="feedback", target="fairy"
-    ).target == "fairy"
+    assert (
+        ClientUsageEvent(
+            event_id=uuid4(), event_type="support_click", source="feedback", target="fairy"
+        ).target
+        == "fairy"
+    )
 
 
 def test_startup_initializes_and_cleans_persisted_database(tmp_path: Path, monkeypatch) -> None:

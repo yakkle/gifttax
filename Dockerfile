@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     && pip install --no-cache-dir uv
 
 COPY pyproject.toml .
+COPY alembic.ini .
 COPY backend/ backend/
 
 RUN uv pip install --system --no-cache -e .

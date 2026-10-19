@@ -16,6 +16,7 @@
 | 구분 | 기술 |
 |------|------|
 | Backend | FastAPI + Python 3.13 |
+| DB | SQLite + SQLAlchemy ORM + Alembic |
 | Frontend | Vanilla JS + HTML/CSS |
 | PDF | reportlab |
 | Scraping | requests + BeautifulSoup |
@@ -57,8 +58,11 @@ docker-compose logs -f
 ### 테스트 실행
 
 ```bash
+# 개발 의존성 설치
+uv pip install -e '.[dev]'
+
 # 테스트
-pytest backend/tests/ -v
+uv run --no-sync pytest backend/tests/ -v
 
 # 린트
 ruff check .

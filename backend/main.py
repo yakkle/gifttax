@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         stop.set()
         await maintenance
+        database.dispose()
 
 
 app = FastAPI(title="StockTax", description="해외주식 증여 금액 계산기", lifespan=lifespan)

@@ -1,4 +1,7 @@
-"""Ordered, transactional schema migrations. Never modify an applied migration."""
+"""Immutable legacy v1 snapshot, used only to verify adoption into Alembic.
+
+New schema changes belong in backend/storage/alembic/versions.
+"""
 
 SCHEMA_VERSION = 1
 
