@@ -151,7 +151,12 @@ gifttax/
 │   │   └── generator/         # 파일 생성기
 │   │       ├── exchange_rate_pdf.py
 │   │       └── gift_calculation_pdf.py
-│   ├── models/        # Pydantic 모델
+│   ├── schemas/       # Pydantic 요청/응답 및 계산 데이터 계약
+│   ├── storage/       # DB 연결, ORM 모델 및 마이그레이션
+│   │   ├── models.py             # SQLAlchemy DB 테이블 및 관계
+│   │   ├── database.py           # DB 연결, 세션 및 트랜잭션
+│   │   ├── migration_support.py  # Alembic 설정 및 기존 DB 호환성 검사
+│   │   └── alembic/              # DB 변경 이력
 │   └── tests/         # 테스트
 ├── Dockerfile
 ├── docker-compose.yml

@@ -1,4 +1,4 @@
-"""Alembic configuration and a conservative bridge from the original SQLite schema."""
+"""Alembic setup and compatibility checks for adopting the legacy SQLite database."""
 
 import re
 from pathlib import Path

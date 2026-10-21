@@ -1,4 +1,4 @@
-"""Contracts for feedback storage and the forthcoming feedback/admin APIs."""
+"""Pydantic request and response contracts for feedback and usage reporting."""
 
 from enum import StrEnum
 from typing import Literal

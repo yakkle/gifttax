@@ -10,9 +10,9 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import event, inspect, text
 
 from backend.storage.database import Database
+from backend.storage.migration_support import UnsupportedSchemaVersionError, migration_config
 from backend.storage.migrations import MIGRATIONS, SCHEMA_VERSION
 from backend.storage.models import AdminAccount, AdminCredential, Base, Feedback, FeedbackContact
-from backend.storage.schema import UnsupportedSchemaVersionError, migration_config
 
 
 @pytest.fixture

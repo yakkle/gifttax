@@ -31,10 +31,13 @@ DB와 `-wal`, `-shm` 파일은 Git에서 제외한다. 환경변수 외부에 �
 설정된 간격으로 초기화와 정리를 재시도한다. 현재 단계에서 입력·계산 정보는 DB에 저장하지 않는다.
 
 DB 모델은 `backend/storage/models.py`, 요청·응답용 Pydantic 계약은
-`backend/models/feedback.py`에 따로 정의한다. 일반 데이터 처리는
+`backend/schemas`에 따로 정의한다. 일반 데이터 처리는
 `Database.session(write=True)`에서 ORM 객체를 추가·조회·변경하는 방식으로 수행한다.
 정상 종료하면 커밋하고 예외가 발생하면 롤백한다. 세션을 요청·작업 간에 공유하지 않으며,
 ORM 객체를 API에 직접 반환하지 않고 세션 안에서 응답 계약으로 변환한다.
+
+DB 연결·세션은 `backend/storage/database.py`, Alembic 실행 설정과 기존 SQLite DB
+호환성 검사는 `backend/storage/migration_support.py`에 모아 저장 계층에서 관리한다.
 
 스키마 이력은 Alembic의 `alembic_version`으로 관리한다.
 앱 시작 시 `upgrade head`를 실행하며 테이블 변경과 버전 변경을 한 트랜잭션으로
@@ -101,7 +104,7 @@ SQLite WAL 모드와 SQLAlchemy 동기 세션을 사용하고 작업별로 독�
 본문 안에 사용자가 직접 적은 이메일 등은 연락처 컬럼처럼 자동 분리되지 않으므로,
 후속 입력 화면에서 민감한 정보를 적지 않도록 안내한다.
 
-입력 계약의 형식·길이·열거형은 `backend/models/feedback.py`에 정의한다.
+입력 계약의 형식·길이·열거형은 `backend/schemas/feedback.py`에 정의한다.
 이메일 형식·수집 동의, 만족도 또는 본문 필요 조건, 요청 빈도 제한과
 이벤트 조합 검증은 후속 의견·통계 서비스 단계에서 구현한다.
 현재 모델을 공개 API로 직접 연결하지 않는다.

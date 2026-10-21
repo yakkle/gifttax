@@ -9,7 +9,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-from backend.storage.schema import is_legacy_schema
+from backend.storage.migration_support import is_legacy_schema
 
 revision: str = "0001"
 down_revision: str | Sequence[str] | None = None

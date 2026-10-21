@@ -10,12 +10,12 @@ from fastapi.testclient import TestClient
 
 from backend.integrations.scraper.yahoo import InvalidTickerError
 from backend.main import app
-from backend.models import GiftCalculationInput, StockInput
+from backend.schemas import GiftCalculationInput, StockInput
 
 client = TestClient(app)
 
 
-class TestModels:
+class TestSchemas:
     def test_stock_input_valid(self):
         stock = StockInput(ticker="AAPL", qty=100, currency="USD")
         assert stock.ticker == "AAPL"

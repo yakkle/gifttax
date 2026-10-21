@@ -11,6 +11,10 @@ from sqlalchemy import URL, Connection, create_engine, delete, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import ConnectionPoolEntry, NullPool
 
+from backend.storage.migration_support import (
+    UnsupportedSchemaVersionError as UnsupportedSchemaVersionError,
+)
+from backend.storage.migration_support import migration_config
 from backend.storage.models import (
     AdminChallenge,
     AdminOneTimeToken,
@@ -19,8 +23,6 @@ from backend.storage.models import (
     FeedbackContact,
     UsageEvent,
 )
-from backend.storage.schema import UnsupportedSchemaVersionError as UnsupportedSchemaVersionError
-from backend.storage.schema import migration_config
 
 SQLITE_TIMEOUT_SECONDS = 5
 _MIGRATION_LOCK = RLock()

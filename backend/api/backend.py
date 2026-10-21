@@ -9,9 +9,9 @@ from starlette.background import BackgroundTask
 
 from backend.integrations.scraper import smbs
 from backend.integrations.scraper.yahoo import InvalidTickerError
-from backend.models import GiftCalculationInput, GiftCalculationResult
 from backend.pdf.generator import exchange_rate_pdf as pdf_generator
 from backend.pdf.generator import gift_calculation_pdf as gift_pdf_generator
+from backend.schemas import GiftCalculationInput, GiftCalculationResult
 from backend.services import calculator
 
 r = backend_router = APIRouter(prefix="/api")

@@ -16,10 +16,11 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from backend.main import app
-from backend.models.feedback import ClientUsageEvent, FeedbackCreate, UsageEventType
+from backend.schemas.feedback import ClientUsageEvent, FeedbackCreate, UsageEventType
 from backend.services.retention import cleanup_expired_data, email_expiry, maintain_storage
 from backend.settings import Settings
 from backend.storage.database import Database, _enable_wal
+from backend.storage.migration_support import migration_config
 from backend.storage.models import (
     AdminAccount,
     AdminChallenge,
@@ -32,7 +33,6 @@ from backend.storage.models import (
     FeedbackContact,
     UsageEvent,
 )
-from backend.storage.schema import migration_config
 
 NOW = datetime(2026, 10, 19, 3, tzinfo=UTC)
 

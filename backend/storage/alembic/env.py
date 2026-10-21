@@ -2,8 +2,8 @@ from alembic import context
 from sqlalchemy import URL, Connection
 
 from backend.settings import Settings
+from backend.storage.migration_support import is_legacy_schema
 from backend.storage.models import Base
-from backend.storage.schema import is_legacy_schema
 
 config = context.config
 

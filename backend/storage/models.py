@@ -1,4 +1,4 @@
-"""SQLAlchemy persistence models; API contracts remain in backend.models."""
+"""SQLAlchemy persistence models; API contracts are defined in backend.schemas."""
 
 from __future__ import annotations
 
