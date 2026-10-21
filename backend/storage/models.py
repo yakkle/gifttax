@@ -94,8 +94,7 @@ class AdminAccount(Base):
     __tablename__ = "admin_account"
     __table_args__ = (CheckConstraint("id = 1"), {"sqlite_strict": True})
 
-    # Match the original SQLite INTEGER PRIMARY KEY reflection exactly.
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_handle: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
     created_at: Mapped[int] = mapped_column(Integer)
     credentials: Mapped[list[AdminCredential]] = relationship(back_populates="account")

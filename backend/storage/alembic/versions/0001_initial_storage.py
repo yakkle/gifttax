@@ -9,8 +9,6 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-from backend.storage.migration_support import is_legacy_schema
-
 revision: str = "0001"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
@@ -18,16 +16,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    if (
-        not op.get_context().as_sql
-        and op.get_bind().dialect.name == "sqlite"
-        and is_legacy_schema(op.get_bind())
-    ):
-        return
-
     op.create_table(
         "admin_account",
-        sa.Column("id", sa.Integer(), nullable=True),
+        sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("user_handle", sa.LargeBinary(), nullable=False),
         sa.Column("created_at", sa.Integer(), nullable=False),
         sa.CheckConstraint("id = 1"),
@@ -198,5 +189,3 @@ def downgrade() -> None:
 
     op.drop_table("admin_challenges")
     op.drop_table("admin_account")
-    if op.get_context().dialect.name == "sqlite":
-        op.execute("PRAGMA user_version = 0")

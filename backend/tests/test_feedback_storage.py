@@ -19,8 +19,7 @@ from backend.main import app
 from backend.schemas.feedback import ClientUsageEvent, FeedbackCreate, UsageEventType
 from backend.services.retention import cleanup_expired_data, email_expiry, maintain_storage
 from backend.settings import Settings
-from backend.storage.database import Database, _enable_wal
-from backend.storage.migration_support import migration_config
+from backend.storage.database import Database, _enable_wal, migration_config
 from backend.storage.models import (
     AdminAccount,
     AdminChallenge,
@@ -107,7 +106,6 @@ def test_migration_failure_rolls_back_schema_and_version(tmp_path: Path) -> None
     ):
         database.initialize()
     with database.engine.connect() as connection:
-        assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 0
         assert (
             connection.exec_driver_sql(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"

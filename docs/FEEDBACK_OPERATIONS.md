@@ -36,21 +36,26 @@ DB 모델은 `backend/storage/models.py`, 요청·응답용 Pydantic 계약은
 정상 종료하면 커밋하고 예외가 발생하면 롤백한다. 세션을 요청·작업 간에 공유하지 않으며,
 ORM 객체를 API에 직접 반환하지 않고 세션 안에서 응답 계약으로 변환한다.
 
-DB 연결·세션은 `backend/storage/database.py`, Alembic 실행 설정과 기존 SQLite DB
-호환성 검사는 `backend/storage/migration_support.py`에 모아 저장 계층에서 관리한다.
+DB 연결·세션과 Alembic 실행 설정은 `backend/storage/database.py`에서 관리한다.
+테이블 생성·변경은 `backend/storage/alembic/versions`의 Alembic revision만 사용한다.
 
 스키마 이력은 Alembic의 `alembic_version`으로 관리한다.
 앱 시작 시 `upgrade head`를 실행하며 테이블 변경과 버전 변경을 한 트랜잭션으로
-처리한다. 실패하면 함께 되돌린다. 알 수 없는 Alembic revision이나 기존 스키마를
-발견하면 자동으로 덮어쓰거나 downgrade하지 않고 저장소 오류를 기록한다.
+처리한다. 실패하면 함께 되돌린다. 알 수 없는 Alembic revision이나 테이블 이름 충돌이
+있으면 자동으로 덮어쓰거나 downgrade하지 않고 저장소 오류를 기록한다.
 
-태스크 1에서 생성한 DB(`PRAGMA user_version = 1`)는 원본 테이블·인덱스 정의가
-보존된 스냅샷과 일치하고 추가 트리거·뷰 등이 없을 때만 편입한다. `0001`은 기존 테이블을 유지하고,
-`0002`는 SQLAlchemy가 인라인 외래 키의 `ON DELETE CASCADE`를 제대로 읽도록
-연락처 테이블 하나를 데이터·CHECK·외래 키·인덱스·STRICT 속성을 보존하며 재작성한다.
-나머지 테이블은 재생성하지 않는다. 새 DB는 같은 Alembic 이력으로 초기화한다.
-편입 후 `user_version` 값은 과거 버전 표시로만 남으며, 이후 스키마 변경은 Alembic으로 관리한다.
-`backend/storage/migrations.py`는 기존 DB 검증용 불변 스냅샷이므로 수정하지 않는다.
+운영에 배포되기 전이므로 초기 이력은 `0001_initial_storage.py` 하나로 유지한다.
+빈 DB에서 테이블 9개, 인덱스와 제약조건을 생성하며 별도의 SQL 스냅샷이나 기존 DB 편입
+기능은 제공하지 않는다. 최초 운영 배포 이후에는 적용된 revision을 수정·삭제하지 않고
+새 revision을 추가한다.
+
+이전 개발 과정에서 생성한 로컬 DB에 `0002` 등 제거된 이력이 남아 있으면 자동 변환하지
+않는다. 필요한 데이터를 별도 보관한 뒤 새 빈 DB 경로를 지정해 초기화한다.
+기존 파일을 유지하면서 새로 시작하는 예시는 다음과 같다.
+
+```bash
+GIFTTAX_DATABASE_PATH="$PWD/.local/feedback-fresh.sqlite3" uv run --no-sync uvicorn backend.main:app --reload
+```
 
 로컬에서는 프로젝트 루트에서 아래 명령을 사용한다. 앱과 같은
 `GIFTTAX_DATABASE_PATH`를 지정해야 한다.

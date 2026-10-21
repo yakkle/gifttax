@@ -2,7 +2,6 @@ from alembic import context
 from sqlalchemy import URL, Connection
 
 from backend.settings import Settings
-from backend.storage.migration_support import is_legacy_schema
 from backend.storage.models import Base
 
 config = context.config
@@ -18,8 +17,6 @@ def run_with_connection(connection: Connection) -> None:
         transactional_ddl=True,
     )
     with context.begin_transaction():
-        if not context.get_context().get_current_heads():
-            is_legacy_schema(connection)
         context.run_migrations()
 
 

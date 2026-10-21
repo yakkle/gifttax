@@ -7,14 +7,11 @@ from threading import RLock
 from time import monotonic, sleep
 
 from alembic import command
+from alembic.config import Config
 from sqlalchemy import URL, Connection, create_engine, delete, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import ConnectionPoolEntry, NullPool
 
-from backend.storage.migration_support import (
-    UnsupportedSchemaVersionError as UnsupportedSchemaVersionError,
-)
-from backend.storage.migration_support import migration_config
 from backend.storage.models import (
     AdminChallenge,
     AdminOneTimeToken,
@@ -26,6 +23,14 @@ from backend.storage.models import (
 
 SQLITE_TIMEOUT_SECONDS = 5
 _MIGRATION_LOCK = RLock()
+
+
+def migration_config() -> Config:
+    config = Config()
+    config.set_main_option(
+        "script_location", str(Path(__file__).parent / "alembic").replace("%", "%%")
+    )
+    return config
 
 
 def _configure_sqlite(connection: sqlite3.Connection, _: ConnectionPoolEntry) -> None:

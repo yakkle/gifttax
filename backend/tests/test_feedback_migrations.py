@@ -1,62 +1,99 @@
+import shutil
 import sqlite3
-from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from alembic import command
-from alembic.operations import Operations
 from alembic.script import ScriptDirectory
-from sqlalchemy import event, inspect, text
+from alembic.util import CommandError
+from sqlalchemy import event, inspect, select, text
+from sqlalchemy.exc import OperationalError
 
-from backend.storage.database import Database
-from backend.storage.migration_support import UnsupportedSchemaVersionError, migration_config
-from backend.storage.migrations import MIGRATIONS, SCHEMA_VERSION
-from backend.storage.models import AdminAccount, AdminCredential, Base, Feedback, FeedbackContact
+from backend.storage.database import Database, migration_config
+from backend.storage.models import (
+    AdminAccount,
+    AdminChallenge,
+    AdminCredential,
+    AdminOneTimeToken,
+    AdminSession,
+    Base,
+    DailyUsageCount,
+    Feedback,
+    FeedbackContact,
+    UsageEvent,
+)
 
 
 @pytest.fixture
-def legacy_database(tmp_path: Path) -> Database:
-    database = Database(tmp_path / "legacy.sqlite3")
-    with sqlite3.connect(database.path) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
-        for statement in MIGRATIONS[SCHEMA_VERSION]:
-            connection.execute(statement)
-        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-        connection.execute(
-            """INSERT INTO feedback (id, satisfaction, category, message, source, status, created_at)
-               VALUES ('feedback-id', 'satisfied', 'review', '기존 의견', 'result', 'resolved', 100)"""
-        )
-        connection.execute(
-            "INSERT INTO feedback_contacts VALUES ('feedback-id', 'reader@example.com', 100, 200)"
-        )
-        connection.execute(
-            "INSERT INTO usage_events VALUES ('event-id', 'support_click', 'visitor-id', 'feedback', 'fairy', 100)"
-        )
-        connection.execute(
-            "INSERT INTO daily_usage_counts VALUES ('2026-10-20', 'support_click', 7)"
-        )
-        connection.execute("INSERT INTO admin_account VALUES (1, ?, 100)", (b"user-handle",))
-        connection.execute(
-            "INSERT INTO admin_credentials VALUES (?, 1, ?, 5, '[]', '기존 패스키', 100, 150)",
-            (b"credential-id", b"public-key"),
-        )
-        connection.execute("INSERT INTO admin_sessions VALUES ('session-id', 1, 100, 200)")
-        connection.execute(
-            "INSERT INTO admin_one_time_tokens VALUES ('token-hash', 'login', 100, 200)"
-        )
-        connection.execute(
-            "INSERT INTO admin_challenges VALUES ('challenge-id', ?, 'authentication', 'binding-hash', 100, 200)",
-            (b"challenge",),
+def populated_database(tmp_path: Path) -> Database:
+    database = Database(tmp_path / "populated.sqlite3")
+    database.initialize()
+    with database.session(write=True) as session:
+        session.add_all(
+            [
+                Feedback(
+                    id="feedback-id",
+                    satisfaction="satisfied",
+                    category="review",
+                    message="저장된 의견",
+                    source="result",
+                    status="resolved",
+                    created_at=100,
+                    contact=FeedbackContact(
+                        email="reader@example.com", consented_at=100, expires_at=200
+                    ),
+                ),
+                UsageEvent(
+                    event_id="event-id",
+                    event_type="support_click",
+                    visitor_id="visitor-id",
+                    source="feedback",
+                    target="fairy",
+                    occurred_at=100,
+                ),
+                DailyUsageCount(day="2026-10-20", event_type="support_click", event_count=7),
+                AdminAccount(
+                    id=1,
+                    user_handle=b"user-handle",
+                    created_at=100,
+                    credentials=[
+                        AdminCredential(
+                            credential_id=b"credential-id",
+                            public_key=b"public-key",
+                            sign_count=5,
+                            label="패스키",
+                            created_at=100,
+                            last_used_at=150,
+                        )
+                    ],
+                    sessions=[
+                        AdminSession(session_id="session-id", created_at=100, expires_at=200)
+                    ],
+                ),
+                AdminOneTimeToken(
+                    token_hash="token-hash", purpose="login", created_at=100, expires_at=200
+                ),
+                AdminChallenge(
+                    challenge_id="challenge-id",
+                    challenge=b"challenge",
+                    purpose="authentication",
+                    binding_hash="binding-hash",
+                    created_at=100,
+                    expires_at=200,
+                ),
+            ]
         )
     return database
 
 
 def snapshot_rows(database: Database) -> dict[str, list[tuple]]:
-    with sqlite3.connect(database.path) as connection:
+    with database.session() as session:
         return {
-            name: connection.execute(f'SELECT * FROM "{name}"').fetchall()
-            for name in Base.metadata.tables
+            name: [
+                tuple(row)
+                for row in session.execute(select(table).order_by(*table.primary_key.columns))
+            ]
+            for name, table in Base.metadata.tables.items()
         }
 
 
@@ -75,20 +112,14 @@ def assert_no_schema_drift(database: Database) -> None:
         command.check(config)
 
 
-def test_adopt_legacy_database_preserves_all_rows_and_constraints(
-    legacy_database: Database,
-) -> None:
-    before_rows = snapshot_rows(legacy_database)
-    before_schema = snapshot_schema(legacy_database)
-    legacy_database.initialize()
-    legacy_database.initialize()
-    assert snapshot_rows(legacy_database) == before_rows
-    after_schema = snapshot_schema(legacy_database)
-    rewritten = {"feedback_contacts", "feedback_contacts_expiry"}
-    assert [row for row in after_schema if row[0] not in rewritten] == [
-        row for row in before_schema if row[0] not in rewritten
-    ]
-    with legacy_database.session() as session:
+def test_reinitialization_preserves_all_rows_and_constraints(populated_database: Database) -> None:
+    before_rows = snapshot_rows(populated_database)
+    before_schema = snapshot_schema(populated_database)
+    populated_database.initialize()
+    populated_database.initialize()
+    assert snapshot_rows(populated_database) == before_rows
+    assert snapshot_schema(populated_database) == before_schema
+    with populated_database.session() as session:
         head = ScriptDirectory.from_config(migration_config()).get_current_head()
         assert session.scalar(text("SELECT version_num FROM alembic_version")) == head
         assert session.get(Feedback, "feedback-id").contact.email == "reader@example.com"
@@ -99,35 +130,41 @@ def test_adopt_legacy_database_preserves_all_rows_and_constraints(
             "length(email) BETWEEN 1 AND 254",
             "expires_at > consented_at",
         }
-    assert_no_schema_drift(legacy_database)
+    assert_no_schema_drift(populated_database)
 
 
-def test_failed_contact_normalization_rolls_back_legacy_adoption(legacy_database: Database) -> None:
-    before_rows, before_schema = snapshot_rows(legacy_database), snapshot_schema(legacy_database)
-    original = Operations.batch_alter_table
-
-    @contextmanager
-    def failing_batch(operations, *args, **kwargs):
-        with original(operations, *args, **kwargs) as batch:
-            yield batch
-        raise RuntimeError("simulated normalization failure")
-
-    with (
-        patch.object(Operations, "batch_alter_table", failing_batch),
-        pytest.raises(RuntimeError, match="simulated normalization failure"),
-    ):
-        legacy_database.initialize()
-    assert snapshot_rows(legacy_database) == before_rows
-    assert snapshot_schema(legacy_database) == before_schema
-    with sqlite3.connect(legacy_database.path) as connection:
-        assert (
-            connection.execute(
-                "SELECT name FROM sqlite_master WHERE name = 'alembic_version'"
-            ).fetchone()
-            is None
-        )
-    legacy_database.initialize()
-    assert_no_schema_drift(legacy_database)
+def test_failed_schema_change_rolls_back_data_and_revision(
+    populated_database: Database, tmp_path: Path
+) -> None:
+    before_rows, before_schema = (
+        snapshot_rows(populated_database),
+        snapshot_schema(populated_database),
+    )
+    scripts = tmp_path / "migration-scripts"
+    config = migration_config()
+    shutil.copytree(
+        config.get_main_option("script_location"),
+        scripts,
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    (scripts / "versions" / "test_next.py").write_text(
+        "import sqlalchemy as sa\nfrom alembic import op\n"
+        'revision = "test_next"\ndown_revision = "0001"\n'
+        "def upgrade():\n"
+        '    op.add_column("feedback", sa.Column("temporary_value", sa.Text()))\n'
+        '    raise RuntimeError("simulated upgrade failure")\n'
+        "def downgrade():\n    pass\n"
+    )
+    config.set_main_option("script_location", str(scripts).replace("%", "%%"))
+    with pytest.raises(RuntimeError, match="simulated upgrade failure"):
+        with populated_database.migration_connection() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
+    assert snapshot_rows(populated_database) == before_rows
+    assert snapshot_schema(populated_database) == before_schema
+    with populated_database.session() as session:
+        assert session.scalar(text("SELECT version_num FROM alembic_version")) == "0001"
+    assert_no_schema_drift(populated_database)
 
 
 def test_new_database_matches_orm_metadata(tmp_path: Path) -> None:
@@ -136,100 +173,105 @@ def test_new_database_matches_orm_metadata(tmp_path: Path) -> None:
     assert_no_schema_drift(database)
 
 
-def test_reading_legacy_revision_does_not_adopt_database(legacy_database: Database) -> None:
-    before_rows, before_schema = snapshot_rows(legacy_database), snapshot_schema(legacy_database)
-    with legacy_database.migration_connection() as connection:
+def test_reading_revision_does_not_modify_database(populated_database: Database) -> None:
+    before_rows, before_schema = (
+        snapshot_rows(populated_database),
+        snapshot_schema(populated_database),
+    )
+    with populated_database.migration_connection() as connection:
         config = migration_config()
         config.attributes["connection"] = connection
         command.current(config)
-    assert snapshot_rows(legacy_database) == before_rows
-    assert snapshot_schema(legacy_database) == before_schema
-    with sqlite3.connect(legacy_database.path) as connection:
-        assert (
-            connection.execute(
-                "SELECT name FROM sqlite_master WHERE name = 'alembic_version'"
-            ).fetchone()
-            is None
-        )
+    assert snapshot_rows(populated_database) == before_rows
+    assert snapshot_schema(populated_database) == before_schema
 
 
-@pytest.mark.parametrize("change", ["column", "trigger", "view"])
-def test_legacy_schema_changes_are_not_silently_stamped(
-    legacy_database: Database, change: str
-) -> None:
-    with sqlite3.connect(legacy_database.path) as connection:
-        statements = {
-            "column": "ALTER TABLE feedback ADD COLUMN unexpected TEXT",
-            "trigger": "CREATE TRIGGER custom_contact AFTER INSERT ON feedback_contacts BEGIN SELECT 1; END",
-            "view": "CREATE VIEW feedback_summary AS SELECT id FROM feedback",
-        }
-        connection.execute(statements[change])
-    before = snapshot_rows(legacy_database)
-    with pytest.raises(UnsupportedSchemaVersionError, match="known schema"):
-        legacy_database.initialize()
-    assert snapshot_rows(legacy_database) == before
-    with sqlite3.connect(legacy_database.path) as connection:
-        assert (
-            connection.execute(
-                "SELECT name FROM sqlite_master WHERE name = 'alembic_version'"
-            ).fetchone()
-            is None
-        )
-
-
-def test_newer_legacy_version_is_rejected_without_changes(legacy_database: Database) -> None:
-    before = snapshot_rows(legacy_database)
-    with sqlite3.connect(legacy_database.path) as connection:
-        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
-    with pytest.raises(UnsupportedSchemaVersionError, match="Unsupported legacy"):
-        legacy_database.initialize()
-    assert snapshot_rows(legacy_database) == before
-
-
-def test_unversioned_existing_tables_are_not_adopted(tmp_path: Path) -> None:
-    database = Database(tmp_path / "unrecognized.sqlite3")
+@pytest.mark.parametrize("conflict", ["table", "view", "index"])
+def test_conflicting_existing_schema_is_not_overwritten(tmp_path: Path, conflict: str) -> None:
+    database = Database(tmp_path / "conflict.sqlite3")
     with sqlite3.connect(database.path) as connection:
         connection.execute("CREATE TABLE another_service (message TEXT)")
         connection.execute("INSERT INTO another_service VALUES ('preserve this')")
-    with pytest.raises(UnsupportedSchemaVersionError):
+        statements = {
+            "table": "CREATE TABLE feedback (message TEXT)",
+            "view": "CREATE VIEW feedback AS SELECT message FROM another_service",
+            "index": "CREATE INDEX feedback_created_at ON another_service(message)",
+        }
+        connection.execute(statements[conflict])
+    before_schema = snapshot_schema(database)
+    with pytest.raises(OperationalError):
         database.initialize()
+    assert snapshot_schema(database) == before_schema
     with sqlite3.connect(database.path) as connection:
         assert (
             connection.execute("SELECT message FROM another_service").fetchone()[0]
             == "preserve this"
         )
-
-
-def test_failed_legacy_adoption_rolls_back_revision_marker(legacy_database: Database) -> None:
-    before = snapshot_rows(legacy_database)
-
-    def failing_version_insert(connection, cursor, statement, parameters, context, executemany):
-        if statement.startswith("INSERT INTO alembic_version"):
-            raise RuntimeError("simulated adoption failure")
-
-    event.listen(legacy_database.engine, "before_cursor_execute", failing_version_insert)
-    try:
-        with pytest.raises(RuntimeError, match="simulated adoption failure"):
-            legacy_database.initialize()
-    finally:
-        event.remove(legacy_database.engine, "before_cursor_execute", failing_version_insert)
-    assert snapshot_rows(legacy_database) == before
-    with sqlite3.connect(legacy_database.path) as connection:
         assert (
             connection.execute(
                 "SELECT name FROM sqlite_master WHERE name = 'alembic_version'"
             ).fetchone()
             is None
         )
-    legacy_database.initialize()
-    assert_no_schema_drift(legacy_database)
 
 
-@pytest.mark.parametrize("legacy", [False, True])
+def test_unknown_revision_is_rejected_without_changes(populated_database: Database) -> None:
+    with populated_database.session(write=True) as session:
+        session.execute(text("UPDATE alembic_version SET version_num = 'unknown_future_revision'"))
+    before = snapshot_rows(populated_database)
+    with pytest.raises(CommandError, match="Can't locate revision"):
+        populated_database.initialize()
+    assert snapshot_rows(populated_database) == before
+    with populated_database.session() as session:
+        assert (
+            session.scalar(text("SELECT version_num FROM alembic_version"))
+            == "unknown_future_revision"
+        )
+
+
+def test_unrelated_existing_tables_are_preserved(tmp_path: Path) -> None:
+    database = Database(tmp_path / "existing.sqlite3")
+    with sqlite3.connect(database.path) as connection:
+        connection.execute("CREATE TABLE another_service (message TEXT)")
+        connection.execute("INSERT INTO another_service VALUES ('preserve this')")
+    database.initialize()
+    with sqlite3.connect(database.path) as connection:
+        assert (
+            connection.execute("SELECT message FROM another_service").fetchone()[0]
+            == "preserve this"
+        )
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0001"
+
+
+def test_failed_upgrade_rolls_back_revision_marker(tmp_path: Path) -> None:
+    database = Database(tmp_path / "revision-failure.sqlite3")
+
+    def failing_version_insert(connection, cursor, statement, parameters, context, executemany):
+        if statement.startswith("INSERT INTO alembic_version"):
+            raise RuntimeError("simulated revision failure")
+
+    event.listen(database.engine, "before_cursor_execute", failing_version_insert)
+    try:
+        with pytest.raises(RuntimeError, match="simulated revision failure"):
+            database.initialize()
+    finally:
+        event.remove(database.engine, "before_cursor_execute", failing_version_insert)
+    with sqlite3.connect(database.path) as connection:
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+            == []
+        )
+    database.initialize()
+    assert_no_schema_drift(database)
+
+
+@pytest.mark.parametrize("existing_data", [False, True])
 def test_alembic_downgrade_and_upgrade_on_disposable_database(
-    tmp_path: Path, legacy_database: Database, legacy: bool
+    tmp_path: Path, populated_database: Database, existing_data: bool
 ) -> None:
-    database = legacy_database if legacy else Database(tmp_path / "disposable.sqlite3")
+    database = populated_database if existing_data else Database(tmp_path / "disposable.sqlite3")
     database.initialize()
     with database.migration_connection() as connection:
         config = migration_config()
@@ -239,16 +281,15 @@ def test_alembic_downgrade_and_upgrade_on_disposable_database(
     assert_no_schema_drift(database)
 
 
-def test_adopted_database_supports_orm_relationships_and_cascade(legacy_database: Database) -> None:
-    legacy_database.initialize()
-    with legacy_database.session(write=True) as session:
+def test_orm_relationships_and_cascade(populated_database: Database) -> None:
+    with populated_database.session(write=True) as session:
         feedback = session.get(Feedback, "feedback-id")
         feedback.message = "ORM으로 수정한 의견"
         feedback.contact.email = "updated@example.com"
-    with legacy_database.session() as session:
+    with populated_database.session() as session:
         assert session.get(Feedback, "feedback-id").message == "ORM으로 수정한 의견"
         assert session.get(FeedbackContact, "feedback-id").email == "updated@example.com"
-    with legacy_database.session(write=True) as session:
+    with populated_database.session(write=True) as session:
         session.delete(session.get(Feedback, "feedback-id"))
-    with legacy_database.session() as session:
+    with populated_database.session() as session:
         assert session.get(FeedbackContact, "feedback-id") is None
