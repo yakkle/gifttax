@@ -520,8 +520,21 @@ def test_private_get_preflight_public_cors_and_security_headers(client):
         headers={"Origin": ORIGIN, "Access-Control-Request-Method": "GET"},
     )
     assert response.status_code == 403 and "access-control-allow-origin" not in response.headers
-    response = client.get("/api/health", headers={"Origin": "https://other.test"})
-    assert response.status_code == 200 and response.headers["access-control-allow-origin"] == "*"
+    public_origin = "https://other.test"
+    for cookie in (None, "cors-test=1"):
+        headers = {"Origin": public_origin}
+        if cookie:
+            headers["Cookie"] = cookie
+        response = client.get("/api/health", headers=headers)
+        assert response.status_code == 200
+        allowed_origin = response.headers["access-control-allow-origin"]
+        # 구버전 Starlette는 쿠키가 없는 요청에 '*', 최신 버전은 항상 Origin을 반환한다.
+        assert allowed_origin in ({public_origin} if cookie else {"*", public_origin})
+        assert response.headers["access-control-allow-credentials"] == "true"
+        if allowed_origin == public_origin:
+            assert "origin" in {
+                value.strip().lower() for value in response.headers.get("vary", "").split(",")
+            }
     for path in ["/admin", "/admin/", "/admin.js", "/admin.css", "/api/admin/auth/session"]:
         response = client.get(path)
         assert response.status_code in {200, 401}
