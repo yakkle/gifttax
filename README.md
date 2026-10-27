@@ -77,7 +77,9 @@ mypy backend/
 [관리자 인증 운영 안내](docs/ADMIN_AUTH.md)를 참고한다.
 후기·관리자 기능용 저장소 설정 및 백업·보관 정책은
 [운영 문서](docs/FEEDBACK_OPERATIONS.md)를 참고하세요.
-현재 단계는 저장 기반만 제공하며 의견 제출과 관리 화면은 후속 단계에서 추가합니다.
+비공개 의견 제출(`POST /api/feedback`), 익명 이벤트 수집(`POST /api/events`),
+관리자 이용 통계(`GET /api/admin/usage?days=30`, 7·30·90일)를 제공합니다.
+후기 작성·관리 화면은 후속 단계에서 추가합니다.
 
 ### 계산하기
 

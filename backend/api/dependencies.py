@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from backend.services.admin_auth import AdminAuthService
 from backend.services.feedback import FeedbackService
+from backend.services.usage import UsageService
 from backend.settings import AdminSettings
 from backend.storage.admin import AdminRepository
 from backend.storage.feedback import FeedbackRepository
@@ -41,3 +42,16 @@ def feedback_service(request: Request) -> FeedbackService:
             detail={"code": "STORAGE_UNAVAILABLE", "message": "의견 저장소를 사용할 수 없습니다."},
         )
     return FeedbackService(FeedbackRepository(database))
+
+
+def usage_service(request: Request) -> UsageService:
+    service = getattr(request.app.state, "usage_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "STORAGE_UNAVAILABLE",
+                "message": "통계 저장소를 사용할 수 없습니다.",
+            },
+        )
+    return service

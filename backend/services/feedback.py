@@ -9,6 +9,7 @@ from uuid import UUID
 from email_validator import EmailNotValidError, validate_email
 
 from backend.schemas.feedback import FeedbackCreate
+from backend.schemas.usage import UsageEventType
 from backend.services.retention import email_expiry
 from backend.storage.feedback import FeedbackRepository
 
@@ -23,6 +24,7 @@ class FeedbackError(Exception):
 class FeedbackSubmission:
     id: UUID
     created: bool
+    usage_event: UsageEventType | None = None
 
 
 def normalize_email(value: str | None, consent: bool) -> str | None:
@@ -69,4 +71,6 @@ class FeedbackService:
                 email=email,
                 email_expires_at=int(email_expiry(datetime.fromtimestamp(now, UTC)).timestamp()),
             )
-        return FeedbackSubmission(input_data.submission_id, created=True)
+        return FeedbackSubmission(
+            input_data.submission_id, created=True, usage_event=UsageEventType.FEEDBACK_SUBMITTED
+        )

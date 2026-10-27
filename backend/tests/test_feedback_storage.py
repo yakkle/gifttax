@@ -16,7 +16,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from backend.main import app
-from backend.schemas.feedback import ClientUsageEvent, FeedbackCreate, UsageEventType
+from backend.schemas.feedback import FeedbackCreate
+from backend.schemas.usage import ClientUsageEvent, UsageEventType
 from backend.services.retention import cleanup_expired_data, email_expiry, maintain_storage
 from backend.settings import Settings
 from backend.storage.database import Database, _enable_wal, migration_config

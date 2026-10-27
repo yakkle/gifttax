@@ -260,6 +260,35 @@ async function deletePreviousFiles(giftPdfFileId, ratePdfFileId) {
 let previousGiftPdfFileId = null;
 let previousRatePdfFileId = null;
 
+async function trackUsage(eventType, source = "site", target = null) {
+    try {
+        // A separate event ID makes retried submissions idempotent; no user input is sent.
+        const eventId = globalThis.crypto?.randomUUID?.();
+        if (!eventId) return false;
+        const response = await fetch(`${API_BASE}/api/events`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            cache: "no-store",
+            keepalive: true,
+            body: JSON.stringify({ event_id: eventId, event_type: eventType, source, target }),
+        });
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
+function initUsageTracking() {
+    document.addEventListener("click", (event) => {
+        const link = event.target.closest?.("a[data-support-target]");
+        if (link) {
+            void trackUsage("support_click", link.dataset.supportSource, link.dataset.supportTarget);
+        }
+    });
+    return trackUsage("page_view");
+}
+
 function initSupportMenu() {
     const dropdown = document.getElementById("support-dropdown");
     const toggle = document.getElementById("support-toggle");
@@ -306,6 +335,7 @@ function initApp() {
     }
 
     initSupportMenu();
+    void initUsageTracking();
 
     document.getElementById("gift-date").addEventListener("change", updateGiftDateHelp);
     document.getElementById("gift-date").addEventListener("input", updateGiftDateHelp);
@@ -398,6 +428,8 @@ if (typeof module !== "undefined" && module.exports) {
         formatDateInputValue,
         getCalculationAvailabilityDate,
         parseLocalDate,
+        trackUsage,
+        initUsageTracking,
     };
 }
 

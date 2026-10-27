@@ -1,7 +1,6 @@
-"""Pydantic request and response contracts for feedback and usage reporting."""
+"""Pydantic request and response contracts for private feedback."""
 
 from enum import StrEnum
-from typing import Literal
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
@@ -59,22 +58,3 @@ class FeedbackRecord(BaseModel):
     created_at: AwareDatetime
     email: str | None = None
     email_expires_at: AwareDatetime | None = None
-
-
-class UsageEventType(StrEnum):
-    PAGE_VIEW = "page_view"
-    CALCULATION_SUCCESS = "calculation_success"
-    CALCULATION_FAILURE = "calculation_failure"
-    GIFT_PDF_DOWNLOAD = "gift_pdf_download"
-    RATE_PDF_DOWNLOAD = "rate_pdf_download"
-    FEEDBACK_SUBMITTED = "feedback_submitted"
-    SUPPORT_CLICK = "support_click"
-
-
-class ClientUsageEvent(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    event_id: UUID
-    event_type: Literal[UsageEventType.PAGE_VIEW, UsageEventType.SUPPORT_CLICK]
-    source: Literal["site", "header", "feedback"] = "site"
-    target: Literal["fairy", "github"] | None = None

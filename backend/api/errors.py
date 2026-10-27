@@ -1,4 +1,4 @@
-"""Safe HTTP errors for private admin APIs and public feedback submission."""
+"""Safe HTTP errors for private admin APIs and public feedback/usage submission."""
 
 from fastapi import Request
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -7,6 +7,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.services.feedback import FeedbackError
+from backend.services.usage import UsageError
+
+
+async def usage_error_handler(request: Request, error: UsageError) -> JSONResponse:
+    return JSONResponse(
+        {"detail": {"code": "INVALID_REQUEST", "message": str(error)}}, status_code=422
+    )
 
 
 async def feedback_error_handler(request: Request, error: FeedbackError) -> JSONResponse:
@@ -18,6 +25,8 @@ async def storage_error_handler(request: Request, error: SQLAlchemyError) -> JSO
         message = "관리자 저장소를 사용할 수 없습니다. DB 상태를 확인해 주세요."
     elif request.url.path == "/api/feedback":
         message = "의견을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."
+    elif request.url.path == "/api/events":
+        message = "통계를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요."
     else:
         raise error
     return JSONResponse(
@@ -26,7 +35,10 @@ async def storage_error_handler(request: Request, error: SQLAlchemyError) -> JSO
 
 
 async def validation_error_handler(request: Request, error: RequestValidationError) -> JSONResponse:
-    if not request.url.path.startswith("/api/admin") and request.url.path != "/api/feedback":
+    if not request.url.path.startswith("/api/admin") and request.url.path not in {
+        "/api/feedback",
+        "/api/events",
+    }:
         return await request_validation_exception_handler(request, error)
     # Pydantic errors include input values; never echo contact details or admin secrets.
     return JSONResponse(
