@@ -51,3 +51,27 @@ async def style_css():
         if css_file.exists():
             return HTMLResponse(content=css_file.read_text(), media_type="text/css")
     return HTMLResponse(content="Not Found", status_code=404)
+
+
+def admin_asset(filename: str, media_type: str) -> HTMLResponse:
+    if frontend_path:
+        asset = frontend_path / filename
+        if asset.exists():
+            return HTMLResponse(content=asset.read_text(), media_type=media_type)
+    return HTMLResponse(content="Not Found", status_code=404)
+
+
+@r.get("/admin", include_in_schema=False)
+@r.get("/admin/", include_in_schema=False)
+async def admin_page():
+    return admin_asset("admin.html", "text/html")
+
+
+@r.get("/admin.js", include_in_schema=False)
+async def admin_js():
+    return admin_asset("admin.js", "application/javascript")
+
+
+@r.get("/admin.css", include_in_schema=False)
+async def admin_css():
+    return admin_asset("admin.css", "text/css")
