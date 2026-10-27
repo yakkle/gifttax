@@ -1,11 +1,13 @@
-"""HTTP dependencies for validated settings and admin service construction."""
+"""HTTP dependencies for validated settings and service construction."""
 
 from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from backend.services.admin_auth import AdminAuthService
+from backend.services.feedback import FeedbackService
 from backend.settings import AdminSettings
 from backend.storage.admin import AdminRepository
+from backend.storage.feedback import FeedbackRepository
 
 
 def admin_settings() -> AdminSettings:
@@ -29,3 +31,13 @@ def admin_service(request: Request) -> AdminAuthService:
             },
         )
     return AdminAuthService(AdminRepository(database), admin_settings())
+
+
+def feedback_service(request: Request) -> FeedbackService:
+    database = getattr(request.app.state, "database", None)
+    if database is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "STORAGE_UNAVAILABLE", "message": "의견 저장소를 사용할 수 없습니다."},
+        )
+    return FeedbackService(FeedbackRepository(database))

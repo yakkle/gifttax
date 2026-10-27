@@ -16,7 +16,8 @@ from webauthn.helpers import bytes_to_base64url
 
 from backend.admin import main
 from backend.main import app
-from backend.middleware.admin_security import MAX_ADMIN_BODY, AdminRateLimiter
+from backend.middleware.admin_security import MAX_ADMIN_BODY
+from backend.middleware.rate_limit import RateLimiter
 from backend.services.admin_auth import AdminAuthService, reset_admin_auth
 from backend.services.admin_sessions import AdminAuthError, token_hash
 from backend.settings import AdminSettings
@@ -554,12 +555,12 @@ def test_request_body_bound_and_content_type(client):
 
 
 def test_rate_limit_and_window(client):
-    app.state.admin_limiter = AdminRateLimiter(per_client=2)
+    app.state.admin_limiter = RateLimiter(per_client=2)
     assert post(client, "authentication/options").status_code == 409
     assert post(client, "authentication/options").status_code == 409
     response = post(client, "authentication/options")
     assert response.status_code == 429 and response.headers["retry-after"] == "60"
-    limiter = AdminRateLimiter(per_client=2, total=3)
+    limiter = RateLimiter(per_client=2, total=3)
     assert limiter.allow("a", now=0) and limiter.allow("a", now=1)
     assert not limiter.allow("a", now=2)
     assert limiter.allow("b", now=3)

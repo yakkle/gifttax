@@ -1,10 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.exception_handlers import request_validation_exception_handler
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import SQLAlchemyError
 
 from backend.api.dependencies import admin_service
 from backend.schemas.admin import (
@@ -174,26 +171,3 @@ async def auth_error_handler(request: Request, error: AdminAuthError) -> JSONRes
         "CONFLICT": 409,
     }[error.code]
     return JSONResponse({"detail": {"code": error.code, "message": str(error)}}, status_code=status)
-
-
-async def storage_error_handler(request: Request, error: SQLAlchemyError) -> JSONResponse:
-    if not request.url.path.startswith("/api/admin"):
-        raise error
-    return JSONResponse(
-        {
-            "detail": {
-                "code": "STORAGE_UNAVAILABLE",
-                "message": "관리자 저장소를 사용할 수 없습니다. DB 상태를 확인해 주세요.",
-            }
-        },
-        status_code=503,
-    )
-
-
-async def validation_error_handler(request: Request, error: RequestValidationError) -> JSONResponse:
-    if not request.url.path.startswith("/api/admin"):
-        return await request_validation_exception_handler(request, error)
-    return JSONResponse(
-        {"detail": {"code": "INVALID_REQUEST", "message": "입력 내용을 확인해 주세요."}},
-        status_code=422,
-    )

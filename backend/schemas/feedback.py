@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
 
 
 class Satisfaction(StrEnum):
@@ -39,8 +39,14 @@ class FeedbackCreate(BaseModel):
     category: FeedbackCategory = FeedbackCategory.REVIEW
     message: str = Field(default="", max_length=2000)
     email: str | None = Field(default=None, max_length=254)
-    email_consent: bool = False
+    email_consent: StrictBool = False
     source: FeedbackSource = FeedbackSource.GENERAL
+    website: str = Field(default="", max_length=200, description="스팸 방지용 빈 필드")
+
+
+class FeedbackReceipt(BaseModel):
+    id: UUID
+    message: str = "의견을 남겨 주셔서 감사합니다."
 
 
 class FeedbackRecord(BaseModel):
