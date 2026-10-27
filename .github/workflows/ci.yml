@@ -13,6 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Node.js 24 세팅
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
       - name: uv 설치 및 Python 3.13 세팅
         uses: astral-sh/setup-uv@v5
         with:
@@ -25,4 +31,7 @@ jobs:
         run: ruff check .
 
       - name: 테스트 (pytest)
-        run: pytest backend/tests/
+        run: uv run --no-sync pytest backend/tests/
+
+      - name: 프론트엔드 테스트
+        run: node --test frontend/tests/*.test.js

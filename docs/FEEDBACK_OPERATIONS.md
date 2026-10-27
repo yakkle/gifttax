@@ -308,25 +308,101 @@ Nginx가 `X-Forwarded-For`를 실제 접속 IP로 덮어쓰고,
 ## 백업과 복원
 
 실행 중인 DB 파일만 복사하면 WAL에 있는 데이터를 놓칠 수 있다.
-Python 표준 SQLite 백업 API로 일관된 스냅샷을 만든다. 아래 경로는 컨테이너 안의 예시다.
+Python 표준 SQLite 백업 API로 일관된 스냅샷을 만든다. 아래 명령은 프로젝트 루트에서 실행하며,
+앱과 같은 Compose 환경 파일 및 데이터 볼륨을 사용한다.
 
 ```bash
-docker compose exec -T gifttax python - <<'PY'
+docker compose --env-file /etc/gifttax/gifttax.env exec -T gifttax python - <<'PY'
 import sqlite3
+from datetime import UTC, datetime
+from uuid import uuid4
 
-with sqlite3.connect('/tmp/gifttax/feedback.sqlite3') as source:
-    with sqlite3.connect('/tmp/gifttax/feedback-backup.sqlite3') as destination:
+from backend.settings import Settings
+
+database = Settings().database_path
+directory = database.parent / 'backups'
+directory.mkdir(mode=0o700, exist_ok=True)
+name = f'feedback-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid4().hex}.sqlite3'
+backup = directory / name
+# 잘못된 원본 경로에 빈 DB를 생성하지 않도록 읽기 전용으로 연다.
+with sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True) as source:
+    with sqlite3.connect(backup) as destination:
         source.backup(destination)
+        assert destination.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
+        assert not destination.execute('PRAGMA foreign_key_check').fetchall()
+backup.chmod(0o600)
+print(backup)
 PY
 ```
 
-백업은 별도의 안전한 저장소로 옮긴다. 이메일과 관리자 인증 정보가 포함되므로
-접근을 제한하고 보관 기간을 적용한다. 자동 정리는 백업 파일까지 정리하지 않는다.
+출력된 파일명을 `BACKUP_FILE`에 넣어 호스트로 복사한다. 백업은 데이터 볼륨과 다른
+안전한 저장소에도 보관한다. 이메일과 관리자 인증 정보가 포함되므로 접근을 제한하고
+보관 기간을 적용한다. 자동 정리는 백업 파일까지 정리하지 않는다.
 
-복원 시 앱을 정지하고 현재 DB와 sidecar를 별도 보관한 뒤,
-백업을 설정된 DB 경로로 배치하고 앱 실행 사용자의 읽기·쓰기 권한을 확인한다.
-이전 `-wal`, `-shm` 파일을 복원한 DB와 섞지 않는다. 재시작 시 정합성·스키마 버전과
-만료 데이터 정리가 수행되는지 확인한다. 앱은 기존 DB에 `PRAGMA integrity_check`를
-자동 실행하지 않으므로 복원 전 SQLite 도구로 `PRAGMA integrity_check` 결과가 `ok`인지 확인한다.
-백업 시점의 세션·토큰이 복구될 수 있으므로 복원 후 `python -m backend.admin reset-auth`로
-인증 상태를 폐기하고 패스키를 다시 등록한다. 자세한 명령은 관리자 인증 운영 안내를 참고한다.
+```bash
+BACKUP_FILE='위에서-출력된-파일명.sqlite3'
+mkdir -p ./private-backups
+chmod 700 ./private-backups
+docker compose --env-file /etc/gifttax/gifttax.env cp "gifttax:/tmp/gifttax/backups/$BACKUP_FILE" ./private-backups/
+chmod 600 "./private-backups/$BACKUP_FILE"
+```
+
+`private-backups`는 Git이나 이미지에 포함하지 않는다. 기본 Compose 경로를 바꿨다면 복사 경로도 바꾼다.
+
+### 복원 순서
+
+1. 복원 대상과 호환되는 코드·이미지 및 환경 파일을 준비한다. 현재 Alembic 초기 revision은
+   `0001`이며, 제거된 개발 revision을 가진 DB를 `stamp`하거나 임의로 변환하지 않는다.
+2. 앱을 정지한다. nginx를 통한 요청은 복원이 끝날 때까지 실패한다. 다른 앱 인스턴스·DB 작업도 중지한다.
+3. 호스트의 `private-backups`에서 선택한 백업을 읽기 전용으로 검증한다. 기존 DB·WAL·SHM은
+   별도 디렉토리에 보존하고, 백업 API로 새 DB를 만든다. 아래 명령 실패 시 서비스를 시작하지 않는다.
+
+```bash
+docker compose --env-file /etc/gifttax/gifttax.env stop gifttax
+docker compose --env-file /etc/gifttax/gifttax.env run --rm --no-deps -T \
+  --volume "$PWD/private-backups:/restore:ro" \
+  --env "GIFTTAX_RESTORE_FILE=/restore/$BACKUP_FILE" gifttax python - <<'PY'
+import os
+import sqlite3
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
+
+from backend.settings import Settings
+
+backup = Path(os.environ['GIFTTAX_RESTORE_FILE'])
+database = Settings().database_path
+with sqlite3.connect(f'{backup.as_uri()}?mode=ro', uri=True) as source:
+    if source.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+        raise RuntimeError('백업 DB 정합성 검사 실패')
+    if source.execute('PRAGMA foreign_key_check').fetchall():
+        raise RuntimeError('백업 DB 참조 무결성 검사 실패')
+    if source.execute('SELECT version_num FROM alembic_version').fetchall() != [('0001',)]:
+        raise RuntimeError('백업 Alembic revision 확인 필요')
+    preserved = database.parent / f'pre-restore-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid4().hex}'
+    preserved.mkdir(mode=0o700)
+    for suffix in ('', '-wal', '-shm'):
+        current = Path(f'{database}{suffix}')
+        if current.exists():
+            current.rename(preserved / current.name)
+    with sqlite3.connect(database) as destination:
+        source.backup(destination)
+    database.chmod(0o600)
+print(f'복원 완료, 기존 DB 보존 위치: {preserved}')
+PY
+```
+
+4. **앱이 정지된 상태에서** 백업 당시 패스키·세션·일회용 토큰을 모두 폐기한다.
+   초기화가 실패하면 원인을 해결할 때까지 앱을 시작하지 않는다.
+
+```bash
+docker compose --env-file /etc/gifttax/gifttax.env run --rm --no-deps -T gifttax python -m backend.admin reset-auth
+docker compose --env-file /etc/gifttax/gifttax.env up -d gifttax
+```
+
+5. [인증 안내](ADMIN_AUTH.md#최초-패스키-등록)에 따라 새 등록 코드로 패스키를 등록한다.
+   수동 JWT 모드라면 새 로그인 토큰을 발급한다. 예전 브라우저 세션으로는 `401`인지 확인한다.
+   [배포 점검표](RELEASE_CHECKLIST.md)의 HTTPS·DB·만료 정리·의견·통계 확인을 수행한다.
+
+복원은 백업 이후 접수된 의견·통계를 되돌린다. 보존한 기존 DB도 개인정보가 포함된 백업으로 관리한다.
+앱은 시작 시 Alembic 마이그레이션과 만료 정리를 수행하지만 `PRAGMA integrity_check`를 자동 실행하지 않는다.

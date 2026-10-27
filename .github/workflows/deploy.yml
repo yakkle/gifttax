@@ -16,6 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Node.js 24 세팅
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
       - name: uv 설치 및 Python 3.13 세팅
         uses: astral-sh/setup-uv@v5
         with:
@@ -28,7 +34,10 @@ jobs:
         run: ruff check .
 
       - name: 테스트 (pytest)
-        run: pytest backend/tests/
+        run: uv run --no-sync pytest backend/tests/
+
+      - name: 프론트엔드 테스트
+        run: node --test frontend/tests/*.test.js
 
   # ─────────────────────────────────────────
   # 2. 빌드 & 배포 (OCI 인스턴스의 self-hosted runner에서 직접 실행)
@@ -53,7 +62,8 @@ jobs:
       - name: 헬스 체크
         run: |
           for attempt in $(seq 1 12); do
-            if curl --fail --silent http://localhost/api/health > /dev/null; then
+            if docker compose --env-file /etc/gifttax/gifttax.env exec -T gifttax \
+              python -c 'import json, urllib.request; response = urllib.request.urlopen("http://127.0.0.1:8000/api/health", timeout=5); assert response.status == 200; assert json.load(response)["status"] == "ok"'; then
               exit 0
             fi
             echo "Health check attempt ${attempt}/12 failed; retrying in 5s"

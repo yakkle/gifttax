@@ -64,7 +64,7 @@ uv pip install -e '.[dev]'
 # 테스트
 uv run --no-sync pytest backend/tests/ -v
 
-# 프런트엔드 테스트 (Node.js 20 이상)
+# 프런트엔드 테스트 (Node.js 20 이상, CI는 24)
 node --test frontend/tests/*.test.js
 
 # 린트
@@ -80,6 +80,8 @@ mypy backend/
 [관리자 인증 운영 안내](docs/ADMIN_AUTH.md)를 참고한다.
 후기·관리자 기능용 저장소 설정 및 백업·보관 정책은
 [운영 문서](docs/FEEDBACK_OPERATIONS.md)를 참고하세요.
+배포 전 설정, 배포 후 확인과 실제 기기 검증 항목은
+[배포 점검표](docs/RELEASE_CHECKLIST.md)를 참고하세요.
 비공개 의견 제출(`POST /api/feedback`), 익명 이벤트 수집(`POST /api/events`),
 관리자 이용 통계(`GET /api/admin/usage?days=30`, 7·30·90일)를 제공합니다.
 상단의 **의견 남기기** 또는 계산 결과 아래에서 비공개 후기를 작성할 수 있습니다.
@@ -148,7 +150,7 @@ gifttax/
 ├── backend/            # 백엔드
 │   ├── main.py            # FastAPI 앱
 │   ├── api/
-│   │   └── router.py          # API 라우터
+│   │   └── routes.py          # API 라우터
 │   ├── services/
 │   │   └── calculator.py      # 계산 로직
 │   ├── tax/                   # 세금 계산 (예정)
