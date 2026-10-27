@@ -329,6 +329,205 @@ function initSupportMenu() {
     });
 }
 
+function feedbackSubmissionId() {
+    try {
+        if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        bytes[6] = (bytes[6] & 15) | 64;
+        bytes[8] = (bytes[8] & 63) | 128;
+        const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    } catch {
+        throw new Error("제출 번호를 만들지 못했습니다. 최신 브라우저에서 다시 시도해 주세요.");
+    }
+}
+
+function readFeedback(form) {
+    const field = (name) => form.elements.namedItem(name);
+    const email = field("email").value.trim();
+    return {
+        satisfaction: field("satisfaction").value || null,
+        category: field("category").value,
+        message: field("message").value.trim(),
+        email: email || null,
+        email_consent: Boolean(email && field("email_consent").checked),
+        website: field("website").value,
+    };
+}
+
+function feedbackValidation(values, emailValid) {
+    if (!values.satisfaction && !values.message) {
+        return { field: "message", message: "만족도를 선택하거나 의견을 작성해 주세요." };
+    }
+    if (values.message.length > 2000) {
+        return { field: "message", message: "의견은 2,000자 이내로 작성해 주세요." };
+    }
+    if (values.email && (!emailValid || values.email.length > 254)) {
+        return { field: "email", message: "이메일 주소를 확인해 주세요." };
+    }
+    if (values.email && !values.email_consent) {
+        return { field: "email_consent", message: "답변용 이메일 수집에 동의해 주세요." };
+    }
+    return null;
+}
+
+class FeedbackRequestError extends Error {
+    constructor(message, code) {
+        super(message);
+        this.code = code;
+    }
+}
+
+async function postFeedback(payload) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+        const response = await fetch(`${API_BASE}/api/feedback`, {
+            method: "POST",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+        });
+        let data = null;
+        try { data = await response.json(); } catch { /* Handle empty or non-JSON errors below. */ }
+        if (!response.ok) {
+            const fallback = response.status === 429
+                ? "요청이 많습니다. 1분 뒤 다시 보내주세요."
+                : "의견을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.";
+            const message = typeof data?.detail?.message === "string" ? data.detail.message : fallback;
+            throw new FeedbackRequestError(message, data?.detail?.code);
+        }
+        if (data?.id !== payload.submission_id) {
+            throw new FeedbackRequestError("접수 결과를 확인하지 못했습니다. 입력 내용은 유지되니 다시 보내주세요.");
+        }
+        return data;
+    } catch (error) {
+        if (error instanceof FeedbackRequestError) throw error;
+        throw new FeedbackRequestError("응답을 확인하지 못했습니다. 연결을 확인한 뒤 다시 보내주세요. 입력 내용은 유지됩니다.");
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+function initFeedback(root = document) {
+    const $ = (id) => root.getElementById(id);
+    const form = $("feedback-form");
+    if (!form) return { setContext() {} };
+    const field = (name) => form.elements.namedItem(name);
+    const panel = $("feedback-panel");
+    const fields = $("feedback-fields");
+    const errorBox = $("feedback-error");
+    const success = $("feedback-success");
+    const support = $("feedback-support");
+    const submit = $("feedback-submit");
+    const email = field("email");
+    const consent = field("email_consent");
+    let source = "general";
+    let busy = false;
+    let completed = false;
+    let attempt = null;
+
+    function updateFields() {
+        const hasEmail = Boolean(email.value.trim());
+        $("feedback-consent").hidden = !hasEmail;
+        consent.disabled = !hasEmail;
+        consent.required = hasEmail;
+        if (!hasEmail) consent.checked = false;
+        $("feedback-count").textContent = `${field("message").value.length.toLocaleString("ko-KR")} / 2,000자`;
+    }
+
+    function open(context) {
+        source = context;
+        panel.open = true;
+        panel.scrollIntoView({ block: "start" });
+        if (completed) success.focus();
+        else form.querySelector('input[name="satisfaction"]').focus({ preventScroll: true });
+    }
+
+    function showError(message, name) {
+        errorBox.textContent = message;
+        errorBox.hidden = false;
+        if (name === "email" || name === "email_consent") $("feedback-contact").open = true;
+        if (name) field(name).focus();
+        else errorBox.focus();
+    }
+
+    $("feedback-open").addEventListener("click", () => open("general"));
+    $("feedback-error-open").addEventListener("click", () => open("error"));
+    panel.addEventListener("toggle", () => {
+        $("feedback-open").setAttribute("aria-expanded", String(panel.open));
+        $("feedback-error-open").setAttribute("aria-expanded", String(panel.open));
+    });
+    form.addEventListener("input", updateFields);
+    form.addEventListener("change", updateFields);
+    $("feedback-clear-rating").addEventListener("click", () => {
+        form.querySelectorAll('input[name="satisfaction"]').forEach((radio) => { radio.checked = false; });
+    });
+    $("feedback-new").addEventListener("click", () => {
+        form.reset();
+        completed = false;
+        attempt = null;
+        form.hidden = false;
+        fields.disabled = false;
+        success.hidden = true;
+        support.hidden = true;
+        errorBox.hidden = true;
+        $("feedback-contact").open = false;
+        updateFields();
+        open(source);
+    });
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (busy || completed) return;
+        errorBox.hidden = true;
+        const values = readFeedback(form);
+        const invalid = feedbackValidation(values, email.validity.valid);
+        if (invalid) {
+            showError(invalid.message, invalid.field);
+            return;
+        }
+        busy = true;
+        fields.disabled = true;
+        form.setAttribute("aria-busy", "true");
+        submit.textContent = "보내는 중...";
+        try {
+            const fingerprint = JSON.stringify(values);
+            // Retry an unchanged request with the same ID and original entry point.
+            // An edited draft is a new submission, so a previous receipt cannot mask edits.
+            if (!attempt || attempt.fingerprint !== fingerprint) {
+                attempt = { fingerprint, payload: { submission_id: feedbackSubmissionId(), ...values, source } };
+            }
+            await postFeedback(attempt.payload);
+            completed = true;
+            form.hidden = true;
+            success.hidden = false;
+            support.hidden = attempt.payload.satisfaction !== "satisfied";
+            success.focus();
+        } catch (error) {
+            // Never log the request body or store feedback/contact details in browser storage.
+            showError(error.message);
+        } finally {
+            busy = false;
+            fields.disabled = completed;
+            form.setAttribute("aria-busy", "false");
+            submit.textContent = "의견 보내기";
+        }
+    });
+
+    updateFields();
+    return {
+        setContext(context) {
+            source = context;
+            $("feedback-error-open").hidden = context !== "error";
+            if (context === "result" && !completed) panel.open = true;
+        },
+    };
+}
+
 function initApp() {
     if (typeof document === "undefined") {
         return;
@@ -336,6 +535,7 @@ function initApp() {
 
     initSupportMenu();
     void initUsageTracking();
+    const feedback = initFeedback();
 
     document.getElementById("gift-date").addEventListener("change", updateGiftDateHelp);
     document.getElementById("gift-date").addEventListener("input", updateGiftDateHelp);
@@ -357,6 +557,7 @@ function initApp() {
         submitBtn.disabled = true;
         submitBtn.textContent = "계산 중...";
         resultDiv.classList.add("hidden");
+        feedback.setContext("general");
 
         const formData = new FormData(form);
 
@@ -368,6 +569,7 @@ function initApp() {
 
             const data = await calculateGift(formData);
             displayResult(data);
+            feedback.setContext("result");
 
             previousGiftPdfFileId = data.gift_pdf_file_id;
             previousRatePdfFileId = data.rate_pdf_file_id;
@@ -402,6 +604,7 @@ function initApp() {
                 smbsLink.style.display = "none";
             }
         } catch (error) {
+            feedback.setContext("error");
             console.error("Error:", error);
             const errorDiv = document.createElement("div");
             errorDiv.className = "error";
@@ -430,6 +633,11 @@ if (typeof module !== "undefined" && module.exports) {
         parseLocalDate,
         trackUsage,
         initUsageTracking,
+        feedbackSubmissionId,
+        readFeedback,
+        feedbackValidation,
+        postFeedback,
+        initFeedback,
     };
 }
 

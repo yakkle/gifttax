@@ -64,6 +64,9 @@ uv pip install -e '.[dev]'
 # 테스트
 uv run --no-sync pytest backend/tests/ -v
 
+# 프런트엔드 테스트 (Node.js 20 이상)
+node --test frontend/tests/*.test.js
+
 # 린트
 ruff check .
 
@@ -79,7 +82,9 @@ mypy backend/
 [운영 문서](docs/FEEDBACK_OPERATIONS.md)를 참고하세요.
 비공개 의견 제출(`POST /api/feedback`), 익명 이벤트 수집(`POST /api/events`),
 관리자 이용 통계(`GET /api/admin/usage?days=30`, 7·30·90일)를 제공합니다.
-후기 작성·관리 화면은 후속 단계에서 추가합니다.
+상단의 **의견 남기기** 또는 계산 결과 아래에서 비공개 후기를 작성할 수 있습니다.
+만족도나 의견 중 하나만 입력해도 제출할 수 있으며, 만족한 후기 접수 후에는 후원 링크를 안내합니다.
+관리자 후기 조회 화면은 후속 단계에서 추가합니다.
 
 ### 계산하기
 
