@@ -8,6 +8,7 @@ Self-hosted Runner를 OCI 인스턴스에 직접 설치하면 SSH 키, Bastion, 
 
 - OCI 인스턴스가 실행 중이고 SSH 접속 가능한 상태
 - 인스턴스에 Docker Engine 및 Docker Compose plugin이 설치되어 있어야 함
+- `actions/checkout@v7`의 Node.js 24 실행을 위해 Actions Runner **v2.327.1 이상** 필요
 - GitHub Actions `deploy` job이 OCI 인스턴스에서 직접 `docker compose build/up`를 실행함
 - GitHub 저장소에 대한 Admin 권한 보유
 
