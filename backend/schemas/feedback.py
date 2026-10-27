@@ -1,6 +1,8 @@
 """Pydantic request and response contracts for private feedback."""
 
+from datetime import date
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
@@ -58,3 +60,29 @@ class FeedbackRecord(BaseModel):
     created_at: AwareDatetime
     email: str | None = None
     email_expires_at: AwareDatetime | None = None
+
+
+class FeedbackFilters(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    category: FeedbackCategory | None = None
+    satisfaction: Satisfaction | None = None
+    status: FeedbackStatus | None = None
+    page: int = Field(default=1, ge=1, le=1_000_000)
+
+
+class FeedbackPage(BaseModel):
+    items: list[FeedbackRecord]
+    total: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: Literal[50] = 50
+
+
+class FeedbackStatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: FeedbackStatus
+
+
+class FeedbackStatusReceipt(BaseModel):
+    id: UUID
+    status: FeedbackStatus

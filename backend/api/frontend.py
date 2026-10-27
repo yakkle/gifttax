@@ -75,3 +75,8 @@ async def admin_js():
 @r.get("/admin.css", include_in_schema=False)
 async def admin_css():
     return admin_asset("admin.css", "text/css")
+
+
+@r.get("/admin-dashboard.js", include_in_schema=False)
+async def admin_dashboard_js():
+    return admin_asset("admin-dashboard.js", "application/javascript")

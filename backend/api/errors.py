@@ -17,7 +17,9 @@ async def usage_error_handler(request: Request, error: UsageError) -> JSONRespon
 
 
 async def feedback_error_handler(request: Request, error: FeedbackError) -> JSONResponse:
-    return JSONResponse({"detail": {"code": error.code, "message": str(error)}}, status_code=422)
+    return JSONResponse(
+        {"detail": {"code": error.code, "message": str(error)}}, status_code=error.status_code
+    )
 
 
 async def storage_error_handler(request: Request, error: SQLAlchemyError) -> JSONResponse:

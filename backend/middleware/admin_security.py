@@ -40,7 +40,13 @@ class AdminBoundaryMiddleware:
     async def __call__(self, scope, receive, send) -> None:
         path = scope.get("path", "")
         is_admin_api = path.startswith("/api/admin")
-        private = is_admin_api or path in {"/admin", "/admin/", "/admin.js", "/admin.css"}
+        private = is_admin_api or path in {
+            "/admin",
+            "/admin/",
+            "/admin.js",
+            "/admin.css",
+            "/admin-dashboard.js",
+        }
         if scope["type"] != "http" or not private:
             await self.public(scope, receive, send)
             return

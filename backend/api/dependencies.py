@@ -1,14 +1,18 @@
 """HTTP dependencies for validated settings and service construction."""
 
-from fastapi import HTTPException, Request
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, Request
 from pydantic import ValidationError
 
 from backend.services.admin_auth import AdminAuthService
+from backend.services.admin_feedback import AdminFeedbackService
+from backend.services.admin_sessions import SessionInfo
 from backend.services.feedback import FeedbackService
 from backend.services.usage import UsageService
 from backend.settings import AdminSettings
 from backend.storage.admin import AdminRepository
-from backend.storage.feedback import FeedbackRepository
+from backend.storage.feedback import AdminFeedbackRepository, FeedbackRepository
 
 
 def admin_settings() -> AdminSettings:
@@ -42,6 +46,27 @@ def feedback_service(request: Request) -> FeedbackService:
             detail={"code": "STORAGE_UNAVAILABLE", "message": "의견 저장소를 사용할 수 없습니다."},
         )
     return FeedbackService(FeedbackRepository(database))
+
+
+def require_admin_session(
+    request: Request, service: Annotated[AdminAuthService, Depends(admin_service)]
+) -> SessionInfo:
+    session = service.sessions.authenticate(
+        request.cookies.get(service.settings.session_cookie_name)
+    )
+    if request.method not in {"GET", "HEAD"}:
+        service.sessions.verify_csrf(session, request.headers.get("x-csrf-token"))
+    return session
+
+
+def admin_feedback_service(request: Request) -> AdminFeedbackService:
+    database = getattr(request.app.state, "database", None)
+    if database is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "STORAGE_UNAVAILABLE", "message": "의견 저장소를 사용할 수 없습니다."},
+        )
+    return AdminFeedbackService(AdminFeedbackRepository(database))
 
 
 def usage_service(request: Request) -> UsageService:

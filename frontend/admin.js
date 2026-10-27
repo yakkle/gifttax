@@ -4,19 +4,30 @@ const $ = (id) => document.getElementById(id);
 let config;
 let csrf = '';
 let busy = false;
+let expiryTimer;
+const dashboard = GiftTaxDashboard.createDashboard(document, {
+  request: adminRequest,
+  onUnauthorized: () => expireSession(),
+});
+
+async function expireSession() {
+  try { await renderLogin(); } catch { /* The private view is already cleared. */ }
+  message('로그인이 만료되었거나 해제되었습니다. 다시 로그인해 주세요.', true);
+}
 
 function message(text, error = false) {
   $('message').textContent = text;
   $('message').classList.toggle('error', error);
 }
 
-async function api(path, body, method = 'POST') {
+async function adminRequest(path, body, method = 'GET', options = {}) {
   const headers = {};
   if (method !== 'GET') {
     headers['Content-Type'] = 'application/json';
     if (csrf) headers['X-CSRF-Token'] = csrf;
   }
-  const response = await fetch(`/api/admin/auth/${path}`, {
+  const response = await fetch(path, {
+    ...options,
     method, credentials: 'same-origin', cache: 'no-store', headers,
     ...(method === 'GET' ? {} : { body: JSON.stringify(body ?? {}) }),
   });
@@ -27,6 +38,10 @@ async function api(path, body, method = 'POST') {
     throw error;
   }
   return data;
+}
+
+function api(path, body, method = 'POST') {
+  return adminRequest(`/api/admin/auth/${path}`, body, method);
 }
 
 function decode(value) {
@@ -66,8 +81,12 @@ function requireWebAuthn() {
 }
 
 async function renderLogin() {
+  clearTimeout(expiryTimer);
+  dashboard.hide();
   csrf = '';
   $('session').hidden = true;
+  $('credentials').replaceChildren();
+  $('expires').textContent = '';
   config = await api('config', null, 'GET');
   $('login').hidden = false;
   $('passkey-login').hidden = config.mode !== 'webauthn' || !config.has_passkey;
@@ -76,10 +95,14 @@ async function renderLogin() {
 }
 
 async function showSession(session) {
+  clearTimeout(expiryTimer);
+  const remaining = session.expires_at * 1000 - Date.now();
+  if (remaining <= 0) { await expireSession(); return; }
+  expiryTimer = setTimeout(expireSession, remaining);
   csrf = session.csrf_token;
   $('login').hidden = true;
   $('session').hidden = false;
-  $('expires').textContent = `로그인 만료: ${new Date(session.expires_at * 1000).toLocaleString('ko-KR')}`;
+  $('expires').textContent = `로그인 만료: ${new Date(session.expires_at * 1000).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} (한국 시간)`;
   $('passkey-management').hidden = config.mode !== 'webauthn';
   if (config.mode === 'webauthn') {
     const credentials = await api('credentials', null, 'GET');
@@ -104,12 +127,13 @@ async function showSession(session) {
       $('credentials').append(item);
     }
   }
+  await dashboard.show();
 }
 
 async function run(action) {
   if (busy) return;
   busy = true;
-  document.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+  document.querySelectorAll('#login button, #session button').forEach((button) => { button.disabled = true; });
   try {
     await action();
   } catch (error) {
@@ -131,7 +155,7 @@ async function run(action) {
     message(text || '인증을 완료할 수 없습니다.', true);
   } finally {
     busy = false;
-    document.querySelectorAll('button').forEach((button) => { button.disabled = button.dataset.locked === 'true'; });
+    document.querySelectorAll('#login button, #session button').forEach((button) => { button.disabled = button.dataset.locked === 'true'; });
   }
 }
 

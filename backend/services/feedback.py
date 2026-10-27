@@ -15,9 +15,10 @@ from backend.storage.feedback import FeedbackRepository
 
 
 class FeedbackError(Exception):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, status_code: int = 422) -> None:
         super().__init__(message)
         self.code = code
+        self.status_code = status_code
 
 
 @dataclass(frozen=True)
