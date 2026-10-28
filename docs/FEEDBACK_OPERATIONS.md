@@ -1,0 +1,408 @@
+# 후기·관리자 데이터 저장소
+
+이 문서는 커밋별로 추가되는 후기 기능의 운영 설정을 설명한다.
+현재 단계에서는 SQLAlchemy ORM·Alembic 기반 저장소·데이터 계약·자동 정리와
+관리자 패스키 인증, 비공개 의견 작성·관리 화면과 익명 이용 통계를 제공한다.
+관리자 인증 설정·최초 등록·JWT 대체 모드·복구 절차는 [관리자 인증 운영 안내](ADMIN_AUTH.md)를 참고한다.
+
+## 저장 경로와 설정
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `GIFTTAX_DATABASE_PATH` | `/tmp/gifttax/feedback.sqlite3` | SQLite 파일의 절대 경로 |
+| `GIFTTAX_RETENTION_INTERVAL_SECONDS` | `86400` | 재정리 간격(초), 최소 60초 |
+
+Docker Compose는 기존 `gifttax-data:/tmp/gifttax` 볼륨 안에 DB를 저장한다.
+컨테이너를 재생성해도 데이터가 유지된다. 로컬 실행에서도 경로를 지정하지 않으면
+`/tmp/gifttax`를 사용하므로 OS 임시 파일 정리의 영향을 받을 수 있다.
+로컬 데이터를 보존하려면 다음처럼 별도의 절대 경로를 지정한다.
+
+```bash
+GIFTTAX_DATABASE_PATH="$PWD/.local/feedback.sqlite3" uvicorn backend.main:app --reload
+```
+
+`.env` 자동 로딩은 하지 않는다. 실행 환경에 변수를 전달해야 한다.
+Docker 경로를 변경하려면 Compose 설정과 영속 볼륨 마운트를 함께 변경해야 한다.
+DB와 `-wal`, `-shm` 파일은 Git에서 제외한다. 환경변수 외부에 인증 비밀을 기록하지 않는다.
+
+## 초기화와 동시 접근
+
+앱 시작 시 스키마를 초기화하고 만료 데이터를 정리한 뒤 요청을 받는다.
+실패하면 오류를 기록하고 기존 계산·다운로드 서비스를 계속 제공하며,
+설정된 간격으로 초기화와 정리를 재시도한다. 현재 단계에서 입력·계산 정보는 DB에 저장하지 않는다.
+
+DB 모델은 `backend/storage/models.py`, 요청·응답용 Pydantic 계약은
+`backend/schemas`에 따로 정의한다. 일반 데이터 처리는
+`Database.session(write=True)`에서 ORM 객체를 추가·조회·변경하는 방식으로 수행한다.
+정상 종료하면 커밋하고 예외가 발생하면 롤백한다. 세션을 요청·작업 간에 공유하지 않으며,
+ORM 객체를 API에 직접 반환하지 않고 세션 안에서 응답 계약으로 변환한다.
+
+DB 연결·세션과 Alembic 실행 설정은 `backend/storage/database.py`에서 관리한다.
+테이블 생성·변경은 `backend/storage/alembic/versions`의 Alembic revision만 사용한다.
+
+스키마 이력은 Alembic의 `alembic_version`으로 관리한다.
+앱 시작 시 `upgrade head`를 실행하며 테이블 변경과 버전 변경을 한 트랜잭션으로
+처리한다. 실패하면 함께 되돌린다. 알 수 없는 Alembic revision이나 테이블 이름 충돌이
+있으면 자동으로 덮어쓰거나 downgrade하지 않고 저장소 오류를 기록한다.
+
+운영에 배포되기 전이므로 초기 이력은 `0001_initial_storage.py` 하나로 유지한다.
+빈 DB에서 테이블 9개, 인덱스와 제약조건을 생성하며 별도의 SQL 스냅샷이나 기존 DB 편입
+기능은 제공하지 않는다. 최초 운영 배포 이후에는 적용된 revision을 수정·삭제하지 않고
+새 revision을 추가한다.
+
+이전 개발 과정에서 생성한 로컬 DB에 `0002` 등 제거된 이력이 남아 있으면 자동 변환하지
+않는다. 필요한 데이터를 별도 보관한 뒤 새 빈 DB 경로를 지정해 초기화한다.
+기존 파일을 유지하면서 새로 시작하는 예시는 다음과 같다.
+
+```bash
+GIFTTAX_DATABASE_PATH="$PWD/.local/feedback-fresh.sqlite3" uv run --no-sync uvicorn backend.main:app --reload
+```
+
+로컬에서는 프로젝트 루트에서 아래 명령을 사용한다. 앱과 같은
+`GIFTTAX_DATABASE_PATH`를 지정해야 한다.
+
+```bash
+# 의존성 설치
+uv pip install -e '.[dev]'
+
+# 적용 상태 확인 및 최신 스키마 적용
+uv run --no-sync alembic current
+uv run --no-sync alembic upgrade head
+
+# ORM 모델과 적용된 스키마 비교
+uv run --no-sync alembic check
+
+# 이후 모델 변경에 대한 마이그레이션 초안 생성
+uv run --no-sync alembic revision --autogenerate -m 'describe schema change'
+```
+
+생성된 마이그레이션은 검토한 뒤 커밋한다. 자동 생성이 모든 제약조건 변경이나
+컬럼 이름 변경을 정확히 판단하지는 않으므로 생성 결과와 데이터 보존을 테스트한다.
+운영에서는 앱 초기화가 마이그레이션을 실행하므로 `alembic.ini` 없이도 동작한다.
+컨테이너에는 CLI 설정도 포함하므로
+`docker compose exec gifttax alembic current`로 상태를 확인할 수 있다.
+`downgrade base`는 후기·인증 테이블과 데이터를 삭제하므로 빈 테스트 DB에서만 사용한다.
+
+SQLite WAL 모드와 SQLAlchemy 동기 세션을 사용하고 작업별로 독립된 연결을 연다.
+쓰기 트랜잭션은 `BEGIN IMMEDIATE`로 직렬화하며 잠금 대기는 최대 5초다.
+외래 키를 모든 연결에서 활성화한다. 단일 서버의 로컬 영속 볼륨을 기준으로 하며,
+여러 서버가 공유하는 네트워크 파일시스템에서 사용하지 않는다.
+
+## 데이터 구분과 보관
+
+- `feedback`: 만족도, 분류, 본문, 진입 위치, 처리 상태, 접수 시각.
+  접수 후 1년(달력 기준)이 지나면 삭제한다. 제출 식별자가 기본 키이므로 중복 저장을 막을 수 있다.
+- `feedback_contacts`: 이메일, 동의 시각, 만료 시각. 동의 시각에서 90일 뒤 만료한다.
+  의견과 별도로 삭제하며, 의견을 삭제하면 연락처도 함께 삭제한다.
+- `usage_events`: 무작위 이벤트·브라우저 식별자, 허용된 이벤트 종류, 진입 위치·후원 대상,
+  발생 시각. 90일 뒤 삭제한다. 금융 입력값·이메일·원본 IP를 저장할 필드는 없다.
+- `daily_usage_counts`: 한국 시간 기준 날짜·이벤트별 합계. 원본 기록을 정리해도 보존한다.
+  90일이 지난 구간의 브라우저별 고유 이용자는 재계산할 수 없다.
+- `admin_account`, `admin_credentials`: 관리자 하나의 공개 식별자와 패스키 공개키 정보.
+  기간 정리로 삭제하지 않는다. 개인키나 생체정보는 저장하지 않는다.
+- `admin_sessions`, `admin_one_time_tokens`, `admin_challenges`: 인증용 상태.
+  만료된 행을 정리한다. 일회용 토큰과 challenge 바인딩 값은 해시로 저장할 구조다.
+
+시각은 UTC Unix 초로 저장하고, 통계 날짜는 서비스에서 한국 시간으로 계산한다.
+정리는 시작 시 및 기본 24시간 간격으로 수행한다. 기간이 끝났다고 즉시 정리가
+실행되는 것은 아니므로 삭제는 다음 정리 시점에 완료된다. 관리자 조회 API는 정리 실행 여부와
+관계없이 보관 기간이 지난 본문·연락처를 반환하지 않으며, 만료된 인증 상태도 사용하지 않는다.
+본문 안에 사용자가 직접 적은 이메일 등은 연락처 컬럼처럼 자동 분리되지 않으므로,
+입력 화면에서 민감한 정보를 적지 않도록 안내한다.
+
+의견 계약의 형식·길이·열거형은 `backend/schemas/feedback.py`, 통계 계약은
+`backend/schemas/usage.py`에 정의한다.
+의견의 필수 조건·이메일 수집 동의는 의견 서비스에서 검증한다.
+통계 이벤트의 허용 조합과 한국 시간 기준 집계 기간은 통계 서비스에서 검증한다.
+
+## 의견 작성 화면
+
+상단 **의견 남기기**에서 언제든 작성할 수 있다. 계산 완료 후에는 PDF 다운로드 아래의
+의견 영역이 펼쳐지고, 계산 오류 시에는 **불편했던 점을 알려주세요** 진입 버튼이 나타난다.
+만족도(만족·보통·불편) 또는 의견 중 하나를 입력하면 제출할 수 있다.
+의견 종류는 이용 후기·불편/오류·기능 제안 중 선택하며 본문은 최대 2,000자다.
+
+답변용 이메일은 별도로 펼쳐서 입력하며, 주소를 입력할 때만 수집 동의 항목을 표시한다.
+이메일 90일·의견 1년 보관 및 민감한 정보 입력 금지 안내를 함께 표시한다.
+본문과 이메일 초안은 브라우저 저장소에 보관하지 않아 페이지를 새로고침하면 사라진다.
+
+전송 중에는 중복 제출을 막으며 15초 안에 응답이 없으면 재시도를 안내한다.
+실패해도 현재 페이지의 입력은 유지된다. 같은 내용의 재시도는 같은 제출 ID와 최초 진입 위치를
+사용하고, 내용을 바꾸거나 **다른 의견 남기기**를 선택하면 새 ID를 사용한다.
+계산 결과·금융 입력값은 후기 요청에 포함하지 않는다.
+
+만족한 의견이 정상 접수된 경우에만 Fairy·GitHub Sponsors 후원 링크를 표시한다.
+후원은 선택 사항이며 자동으로 이동하지 않는다. 링크는 새 탭에서 열리고 클릭 위치는
+`support_click`의 `source=feedback`으로 집계된다.
+
+화면 동작 테스트는 `node --test frontend/tests/*.test.js`로 실행한다(Node.js 20 이상).
+
+## 비공개 의견 제출 API
+
+`POST /api/feedback`은 로그인 없이 JSON으로 의견을 접수한다.
+관리자 인증 설정이 없어도 사용할 수 있다. 공개 조회 API는 제공하지 않는다.
+
+```json
+{
+  "submission_id": "c5c9cd84-96c7-43c9-8458-b535315b9680",
+  "satisfaction": "satisfied",
+  "category": "suggestion",
+  "message": "계산 결과를 다시 확인할 수 있으면 좋겠습니다.",
+  "source": "result",
+  "email": "reply@example.com",
+  "email_consent": true,
+  "website": ""
+}
+```
+
+- `submission_id`: 클라이언트에서 새 의견마다 생성하는 UUID. 통신 실패 후 재시도할 때는 같은 값을 사용한다.
+- `satisfaction`: `satisfied`, `neutral`, `dissatisfied` 중 하나. 생략할 수 있다.
+- `message`: 앞뒤 공백을 제거한 최대 2,000자 본문. 만족도와 본문 중 하나는 있어야 한다.
+- `category`: `review`(기본값), `problem`, `suggestion` 중 하나.
+- `source`: `general`(기본값), `result`, `error` 중 하나.
+- `email`: 선택 항목. 비어 있지 않으면 `email_consent: true`가 필요하다.
+  형식 검사와 주소 정규화만 수행하며 DNS 조회·메일 발송·실제 수신 가능 여부 확인은 하지 않는다.
+- `website`: 스팸 방지용 숨김 필드로 항상 빈 문자열을 보낸다.
+  값이 있으면 일반 접수 응답을 반환하지만 DB에는 아무것도 저장하지 않는다.
+
+최초 접수는 `201`, 이미 저장된 제출 ID의 재시도는 `200`으로 응답한다.
+응답에는 `id`와 감사 메시지만 포함하며 입력 본문·이메일을 반환하지 않는다.
+같은 ID로 다른 내용을 보내도 최초 의견과 연락처를 수정하지 않는다.
+연락처가 만료·삭제된 뒤 재시도해도 연락처를 다시 만들거나 보관 기간을 연장하지 않는다.
+의견 자체가 보관 기간 이후 삭제되면 해당 ID의 중복 여부도 더는 확인할 수 없다.
+
+이메일과 의견은 한 트랜잭션으로 저장한다. 일부 저장에 실패하면 모두 롤백한다.
+이메일 동의·접수 시각은 서버에서 정하며 연락처는 접수 후 90일간 보관한다.
+사용자가 연락처를 남겨도 자동 답변 메일은 발송하지 않는다.
+
+오류 응답은 `detail.code`, `detail.message` 형식을 사용하며 입력값을 다시 노출하지 않는다.
+
+| HTTP 상태 | 의미 |
+|---|---|
+| `413` | 요청 본문이 32 KiB를 초과함 |
+| `415` | `Content-Type`이 `application/json`이 아님 |
+| `422` | 필수 조건·형식·길이 오류 또는 이메일 수집 동의 누락 |
+| `429` | 요청 빈도 초과. `Retry-After: 60` 이후 재시도 |
+| `503` | 저장소 준비 또는 저장 실패. 같은 제출 ID로 재시도 |
+
+접수와 오류 응답 모두 `Cache-Control: no-store`를 설정한다.
+
+## 접수 빈도 제한과 프록시
+
+한 프로세스에서 IP별 최근 60초간 5회, 전체 최근 60초간 60회까지 접수 요청을 허용한다.
+잘못된 입력과 스팸 방지 필드가 채워진 요청도 횟수에 포함한다.
+IP는 메모리에서만 최대 2,048개까지 관리하며 DB에 저장하지 않는다.
+제한 기록은 서버 재시작 시 초기화되고 여러 프로세스·서버 사이에 공유되지 않는다.
+현재 단일 프로세스 배포를 기준으로 하며, 공유 IP를 쓰는 사용자는 같은 제한을 적용받는다.
+
+운영 Compose에서는 백엔드 포트를 외부에 공개하지 않고 Nginx를 통해서만 접근한다.
+Nginx가 `X-Forwarded-For`를 실제 접속 IP로 덮어쓰고,
+백엔드는 `FORWARDED_ALLOW_IPS=*`로 이 프록시 정보를 사용한다.
+따라서 운영 설정에서 백엔드 포트를 직접 노출하거나 신뢰할 수 없는 컨테이너를 같은 네트워크에
+추가하지 않는다. 앞단에 CDN이나 다른 프록시를 추가한다면 실제 클라이언트 IP 전달 설정도 함께 조정한다.
+직접 접근하는 개발 환경에는 이 전체 신뢰 설정을 추가하지 않는다.
+
+## 익명 이용 통계
+
+공개 페이지는 방문과 후원 링크 클릭만 `POST /api/events`로 보낸다.
+계산 결과·다운로드·실제 의견 접수는 서버에서 기록하며 브라우저가 해당 이벤트를 직접 제출할 수 없다.
+금융 입력값, 의견 본문, 이메일, 원본 IP, User-Agent, 방문 URL·검색어는 통계에 저장하지 않는다.
+
+방문자를 구분하는 쿠키는 서버에서 생성한 무작위 UUID이며 발급 후 90일 만료한다.
+`HttpOnly`, `SameSite=Lax`, `Path=/`를 설정하고 HTTPS에서는 `Secure`와
+`__Host-gifttax-visitor` 이름을 사용한다. HTTP 개발 환경의 이름은 `gifttax-visitor`다.
+기존 쿠키를 사용할 때 만료를 연장하지 않으며, 관리자·상태 확인 요청에는 발급하지 않는다.
+공개 HTML 응답에서 먼저 발급하므로 첫 방문과 이어지는 계산이 같은 식별자를 사용할 수 있다.
+쿠키를 삭제하거나 기기·브라우저를 바꾸면 다른 방문자로 집계된다. 쿠키 차단, JavaScript 비활성화,
+통신 실패, 봇·자동 요청의 영향도 있으므로 실제 사람 수를 확정하는 지표로 사용하지 않는다.
+
+```json
+{
+  "event_id": "25966b6c-be94-4ba6-ad57-d1fd3f26f5d4",
+  "event_type": "support_click",
+  "source": "header",
+  "target": "fairy"
+}
+```
+
+- `page_view`는 `source: site`, `target: null` 조합만 허용한다. 페이지 로드마다 한 번 보낸다.
+- `support_click`은 `source: header | feedback`, `target: fairy | github` 조합만 허용한다.
+  클릭 수이며 실제 후원 완료 여부는 확인하지 않는다. 화면은 `header`와 `feedback`에서 전송한다.
+- `event_id`는 이벤트마다 생성하는 UUID다. 같은 ID를 재전송하면 원본·일별 합계가 중복 증가하지 않는다.
+  브라우저 식별자와 발생 시각은 서버에서 정하며 추가 JSON 필드는 거부한다.
+- JSON 본문은 최대 4 KiB다. 한 프로세스에서 IP별 최근 60초 30회, 전체 300회로 제한한다.
+  동일 출처 요청만 허용하며 Origin이 다르거나 브라우저가 외부 출처로 표시한 요청은 `403`으로 거부한다.
+  Origin이 없는 비브라우저 요청까지 인증하는 장치는 아니다.
+- 성공은 `204`, 본문 초과는 `413`, JSON 이외는 `415`, 입력 오류는 `422`,
+  빈도 초과는 `429`와 `Retry-After: 60`, 저장소 실패는 `503`으로 응답한다.
+  응답에는 `Cache-Control: no-store`를 설정한다.
+
+브라우저 전송은 `keepalive`를 사용하며 클릭 이동이나 계산을 기다리게 하지 않는다.
+서버 집계도 비즈니스 응답 이후 별도로 저장하고 실패 시 일반 오류 로그만 남긴다.
+통계 원본과 일별 합계는 한 트랜잭션으로 반영하지만 의견 저장과 통계 저장은 별도 작업이다.
+따라서 통계 저장 실패·프로세스 종료 시 일부 이벤트가 누락될 수 있다.
+
+## 관리자 의견 관리
+
+`/admin`에 로그인하면 비공개 의견 목록이 표시된다. 최초 조회는 한국 시간 기준 최근 30일이며,
+날짜를 비우면 보관 중인 전체 기간을 조회한다. 통계 조회 기간과 의견 필터는 독립적이다.
+
+| 요청 | 동작 |
+| --- | --- |
+| `GET /api/admin/feedback` | 최신순 의견 목록과 필터 조건의 전체 건수 |
+| `PATCH /api/admin/feedback/{UUID}` | `{"status":"in_progress"}` 형태로 상태만 변경 |
+| `DELETE /api/admin/feedback/{UUID}` | 의견 및 연결된 이메일 영구 삭제 |
+
+모든 API는 기존 관리자 세션으로 인증하고 외부 Origin을 거부한다.
+변경·삭제 요청은 동일 Origin, `Content-Type: application/json`, 세션의 `X-CSRF-Token`이 필요하다.
+삭제 화면은 확인 창을 제공하며, API 삭제 요청의 본문은 `{}`로 보낼 수 있다.
+삭제 후에도 이미 발생한 익명 의견 접수 통계는 유지한다.
+
+목록 쿼리:
+
+- `start_date`, `end_date`: 선택 사항, `YYYY-MM-DD`. 한국 시간 자정부터 종료일 하루 끝까지 포함한다.
+  종료일 기본값은 오늘이며 미래 종료일·시작일 역전은 `422`로 거부한다.
+- `category`: `review`, `problem`, `suggestion` 중 하나.
+- `satisfaction`: `satisfied`, `neutral`, `dissatisfied` 중 하나.
+- `status`: `new`, `in_progress`, `resolved` 중 하나.
+- `page`: 기본 1, 최대 1,000,000. 페이지당 50개 고정이며 생성 시각·UUID 내림차순이다.
+
+필터가 없는 항목은 전체로 취급하며 조건은 AND로 결합한다.
+응답은 `items`, `total`, `page`, `page_size`를 포함한다. 각 의견에는 분류·만족도·본문·진입 화면·
+상태·접수 시각·유효한 이메일과 만료 시각을 제공한다. 만족도만 남긴 의견도 조회할 수 있다.
+보관 기간이 지난 본문은 목록에서 제외하며 변경·삭제 요청도 `404`로 처리한다.
+이메일 만료 시점부터는 정리 작업 전이라도 주소와 만료 시각을 모두 `null`로 반환한다.
+
+이메일 복사 버튼은 클립보드 권한이 없으면 직접 복사할 수 있도록 주소를 선택한다.
+앱은 답변 메일을 발송하지 않는다. 로그아웃·세션 만료 시 의견과 이메일을 화면에서 지우고,
+늦게 도착한 응답도 표시하지 않는다. 의견·이메일을 URL이나 브라우저 저장소에 저장하지 않는다.
+
+## 관리자 이용 통계 조회
+
+`GET /api/admin/usage?days=30`은 기존 관리자 세션으로 인증한다.
+기간은 `7`, `30`(기본값), `90`일 중 하나이며 오늘을 포함한 한국 시간의 날짜 구간이다.
+관리자 설정 미완료 시 `503`, 유효한 세션이 없으면 `401`, 외부 Origin이면 `403`을 반환한다.
+`/admin`의 이용 통계 화면은 기본 최근 30일이며 7·30·90일을 선택할 수 있다.
+전체 합계와 일별 표를 제공하며 모든 날짜는 한국 시간 기준이다.
+
+응답은 `period_days`, `period_start`, `period_end`, `timezone`, `totals`, `daily`를 포함한다.
+`daily`는 오래된 날짜부터 정렬하며 데이터가 없는 날짜도 0으로 채운다.
+`totals`와 각 일자에 다음 지표를 제공하며 원본 이벤트·식별자는 반환하지 않는다.
+
+| 지표 | 집계 기준 |
+|---|---|
+| `page_views`, `visitors` | 방문 이벤트 수, 해당 이벤트의 고유 브라우저 수 |
+| `calculation_successes`, `calculation_users` | 계산 API의 정상 응답 수, 성공한 고유 브라우저 수 |
+| `calculation_failures` | 계산 API 실패 수. 입력 검증 오류와 계산 가능일 이전 요청 포함 |
+| `gift_pdf_downloads`, `rate_pdf_downloads` | 종류별 PDF의 정상 응답 전송 완료 수 |
+| `feedback_submissions` | 실제 새 의견 접수 수. 중복 제출·스팸 숨김 필드·오류 제외 |
+| `support_clicks` | 허용된 후원 링크 클릭 수 |
+
+기간 전체의 고유 브라우저 수는 일별 고유 수의 합이 아니다. 한 브라우저가 여러 날 이용해도
+기간 전체에서는 한 번만 센다. 계산만 직접 호출한 브라우저는 방문 이벤트가 없으면 방문자 지표에는 포함되지 않는다.
+다운로드는 서버의 응답 전송 완료 기준으로 사용자의 파일 저장 여부를 보장하지 않는다.
+파일이 없는 요청, 재다운로드의 `404`, 미다운로드 파일 정리용 `DELETE`는 집계하지 않는다.
+새 PDF의 파일 ID는 `gift-{UUID}` 또는 `rate-{UUID}`로 종류를 구분하며 API의 필드명·타입은 유지한다.
+기존 UUID 파일도 다운로드할 수 있지만 종류를 알 수 없어 통계에서 제외한다.
+
+## 백업과 복원
+
+실행 중인 DB 파일만 복사하면 WAL에 있는 데이터를 놓칠 수 있다.
+Python 표준 SQLite 백업 API로 일관된 스냅샷을 만든다. 아래 명령은 프로젝트 루트에서 실행하며,
+앱과 같은 Compose 환경 파일 및 데이터 볼륨을 사용한다.
+
+```bash
+docker compose --env-file /etc/gifttax/gifttax.env exec -T gifttax python - <<'PY'
+import sqlite3
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from backend.settings import Settings
+
+database = Settings().database_path
+directory = database.parent / 'backups'
+directory.mkdir(mode=0o700, exist_ok=True)
+name = f'feedback-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid4().hex}.sqlite3'
+backup = directory / name
+# 잘못된 원본 경로에 빈 DB를 생성하지 않도록 읽기 전용으로 연다.
+with sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True) as source:
+    with sqlite3.connect(backup) as destination:
+        source.backup(destination)
+        assert destination.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
+        assert not destination.execute('PRAGMA foreign_key_check').fetchall()
+backup.chmod(0o600)
+print(backup)
+PY
+```
+
+출력된 파일명을 `BACKUP_FILE`에 넣어 호스트로 복사한다. 백업은 데이터 볼륨과 다른
+안전한 저장소에도 보관한다. 이메일과 관리자 인증 정보가 포함되므로 접근을 제한하고
+보관 기간을 적용한다. 자동 정리는 백업 파일까지 정리하지 않는다.
+
+```bash
+BACKUP_FILE='위에서-출력된-파일명.sqlite3'
+mkdir -p ./private-backups
+chmod 700 ./private-backups
+docker compose --env-file /etc/gifttax/gifttax.env cp "gifttax:/tmp/gifttax/backups/$BACKUP_FILE" ./private-backups/
+chmod 600 "./private-backups/$BACKUP_FILE"
+```
+
+`private-backups`는 Git이나 이미지에 포함하지 않는다. 기본 Compose 경로를 바꿨다면 복사 경로도 바꾼다.
+
+### 복원 순서
+
+1. 복원 대상과 호환되는 코드·이미지 및 환경 파일을 준비한다. 현재 Alembic 초기 revision은
+   `0001`이며, 제거된 개발 revision을 가진 DB를 `stamp`하거나 임의로 변환하지 않는다.
+2. 앱을 정지한다. nginx를 통한 요청은 복원이 끝날 때까지 실패한다. 다른 앱 인스턴스·DB 작업도 중지한다.
+3. 호스트의 `private-backups`에서 선택한 백업을 읽기 전용으로 검증한다. 기존 DB·WAL·SHM은
+   별도 디렉토리에 보존하고, 백업 API로 새 DB를 만든다. 아래 명령 실패 시 서비스를 시작하지 않는다.
+
+```bash
+docker compose --env-file /etc/gifttax/gifttax.env stop gifttax
+docker compose --env-file /etc/gifttax/gifttax.env run --rm --no-deps -T \
+  --volume "$PWD/private-backups:/restore:ro" \
+  --env "GIFTTAX_RESTORE_FILE=/restore/$BACKUP_FILE" gifttax python - <<'PY'
+import os
+import sqlite3
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
+
+from backend.settings import Settings
+
+backup = Path(os.environ['GIFTTAX_RESTORE_FILE'])
+database = Settings().database_path
+with sqlite3.connect(f'{backup.as_uri()}?mode=ro', uri=True) as source:
+    if source.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+        raise RuntimeError('백업 DB 정합성 검사 실패')
+    if source.execute('PRAGMA foreign_key_check').fetchall():
+        raise RuntimeError('백업 DB 참조 무결성 검사 실패')
+    if source.execute('SELECT version_num FROM alembic_version').fetchall() != [('0001',)]:
+        raise RuntimeError('백업 Alembic revision 확인 필요')
+    preserved = database.parent / f'pre-restore-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid4().hex}'
+    preserved.mkdir(mode=0o700)
+    for suffix in ('', '-wal', '-shm'):
+        current = Path(f'{database}{suffix}')
+        if current.exists():
+            current.rename(preserved / current.name)
+    with sqlite3.connect(database) as destination:
+        source.backup(destination)
+    database.chmod(0o600)
+print(f'복원 완료, 기존 DB 보존 위치: {preserved}')
+PY
+```
+
+4. **앱이 정지된 상태에서** 백업 당시 패스키·세션·일회용 토큰을 모두 폐기한다.
+   초기화가 실패하면 원인을 해결할 때까지 앱을 시작하지 않는다.
+
+```bash
+docker compose --env-file /etc/gifttax/gifttax.env run --rm --no-deps -T gifttax python -m backend.admin reset-auth
+docker compose --env-file /etc/gifttax/gifttax.env up -d gifttax
+```
+
+5. [인증 안내](ADMIN_AUTH.md#최초-패스키-등록)에 따라 새 등록 코드로 패스키를 등록한다.
+   수동 JWT 모드라면 새 로그인 토큰을 발급한다. 예전 브라우저 세션으로는 `401`인지 확인한다.
+   [배포 점검표](RELEASE_CHECKLIST.md)의 HTTPS·DB·만료 정리·의견·통계 확인을 수행한다.
+
+복원은 백업 이후 접수된 의견·통계를 되돌린다. 보존한 기존 DB도 개인정보가 포함된 백업으로 관리한다.
+앱은 시작 시 Alembic 마이그레이션과 만료 정리를 수행하지만 `PRAGMA integrity_check`를 자동 실행하지 않는다.

@@ -10,12 +10,12 @@ from fastapi.testclient import TestClient
 
 from backend.integrations.scraper.yahoo import InvalidTickerError
 from backend.main import app
-from backend.models import GiftCalculationInput, StockInput
+from backend.schemas import GiftCalculationInput, StockInput
 
 client = TestClient(app)
 
 
-class TestModels:
+class TestSchemas:
     def test_stock_input_valid(self):
         stock = StockInput(ticker="AAPL", qty=100, currency="USD")
         assert stock.ticker == "AAPL"
@@ -176,12 +176,14 @@ class TestCalculator:
         with (
             patch("backend.services.calculator.scraper.get_stock_prices") as mock_prices,
             patch("backend.services.calculator.smbs.get_exchange_rate") as mock_rate,
+            patch("backend.services.calculator.smbs.get_exchange_rates") as mock_rates,
         ):
             mock_prices.return_value = [
                 (date(2025, 9, 7), Decimal("100.00")),
                 (date(2025, 9, 8), Decimal("200.00")),
             ]
             mock_rate.return_value = (Decimal("1000.00"), date(2025, 11, 6))
+            mock_rates.return_value = [(date(2025, 11, 6), Decimal("1000.00"))]
 
             result = calculate_gift_amount(
                 gift_date=date(2025, 11, 6),

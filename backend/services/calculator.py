@@ -5,7 +5,7 @@ from dateutil.relativedelta import relativedelta
 
 from backend.integrations.scraper import smbs
 from backend.integrations.scraper import yahoo as scraper
-from backend.models import (
+from backend.schemas import (
     GiftCalculationInput,
     GiftCalculationResult,
     PriceDataPoint,

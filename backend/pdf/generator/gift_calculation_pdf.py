@@ -10,7 +10,6 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.platypus import LongTable, Table, TableStyle
 
-from backend.models import GiftCalculationResult, StockGiftResult
 from backend.pdf.generator.common import (
     BOTTOM_MARGIN,
     CONTENT_WIDTH,
@@ -26,6 +25,7 @@ from backend.pdf.generator.common import (
     draw_longtable,
     font,
 )
+from backend.schemas import GiftCalculationResult, StockGiftResult
 
 # 컬럼 x 좌표
 COL1_X = LEFT_MARGIN

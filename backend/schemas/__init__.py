@@ -1,3 +1,5 @@
+"""Pydantic request, response, and calculation data contracts."""
+
 from datetime import date
 from decimal import Decimal
 

@@ -104,6 +104,8 @@ gifttax/
     ├── tax
     ├── integrations
     ├── pdf
+    ├── schemas
+    ├── storage
     └── tests
 
 ---
@@ -115,7 +117,9 @@ gifttax/
 * tax: 증여세 계산 로직
 * integrations: 외부 API 연동
 * pdf: PDF 문서 생성
-* models: 데이터 계약 정의 (Pydantic 모델)
+* schemas: API 요청/응답 및 계산 데이터 계약 정의 (Pydantic 모델)
+* storage: DB 연결, 세션, 마이그레이션 및 영속화 처리
+* storage/models.py: DB 테이블, 컬럼 및 관계 정의 (SQLAlchemy ORM 모델)
 
 ---
 
@@ -230,6 +234,8 @@ USD → KRW 환율 조회
 ---
 
 # 10. 테스트 규칙
+
+uv 환경이 구성된 경우 테스트는 `uv run --no-sync pytest backend/tests/`로 실행한다.
 
 다음 로직은 반드시 테스트해야 한다.
 

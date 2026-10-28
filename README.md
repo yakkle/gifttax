@@ -16,6 +16,7 @@
 | 구분 | 기술 |
 |------|------|
 | Backend | FastAPI + Python 3.13 |
+| DB | SQLite + SQLAlchemy ORM + Alembic |
 | Frontend | Vanilla JS + HTML/CSS |
 | PDF | reportlab |
 | Scraping | requests + BeautifulSoup |
@@ -57,8 +58,14 @@ docker-compose logs -f
 ### 테스트 실행
 
 ```bash
+# 개발 의존성 설치
+uv pip install -e '.[dev]'
+
 # 테스트
-pytest backend/tests/ -v
+uv run --no-sync pytest backend/tests/ -v
+
+# 프런트엔드 테스트 (Node.js 20 이상, CI는 24)
+node --test frontend/tests/*.test.js
 
 # 린트
 ruff check .
@@ -68,6 +75,19 @@ mypy backend/
 ```
 
 ## API 사용법
+
+관리자 로그인·패스키 등록·JWT 대체 모드·인증 복구는
+[관리자 인증 운영 안내](docs/ADMIN_AUTH.md)를 참고한다.
+후기·관리자 기능용 저장소 설정 및 백업·보관 정책은
+[운영 문서](docs/FEEDBACK_OPERATIONS.md)를 참고하세요.
+배포 전 설정, 배포 후 확인과 실제 기기 검증 항목은
+[배포 점검표](docs/RELEASE_CHECKLIST.md)를 참고하세요.
+비공개 의견 제출(`POST /api/feedback`), 익명 이벤트 수집(`POST /api/events`),
+관리자 이용 통계(`GET /api/admin/usage?days=30`, 7·30·90일)를 제공합니다.
+상단의 **의견 남기기** 또는 계산 결과 아래에서 비공개 후기를 작성할 수 있습니다.
+만족도나 의견 중 하나만 입력해도 제출할 수 있으며, 만족한 후기 접수 후에는 후원 링크를 안내합니다.
+`/admin`에 로그인하면 이용 통계와 비공개 의견을 조회할 수 있습니다.
+날짜·분류·만족도·처리 상태 필터, 상태 변경·삭제, 답변용 이메일 복사를 제공합니다.
 
 ### 계산하기
 
@@ -130,7 +150,7 @@ gifttax/
 ├── backend/            # 백엔드
 │   ├── main.py            # FastAPI 앱
 │   ├── api/
-│   │   └── router.py          # API 라우터
+│   │   └── routes.py          # API 라우터
 │   ├── services/
 │   │   └── calculator.py      # 계산 로직
 │   ├── tax/                   # 세금 계산 (예정)
@@ -143,7 +163,11 @@ gifttax/
 │   │   └── generator/         # 파일 생성기
 │   │       ├── exchange_rate_pdf.py
 │   │       └── gift_calculation_pdf.py
-│   ├── models/        # Pydantic 모델
+│   ├── schemas/       # Pydantic 요청/응답 및 계산 데이터 계약
+│   ├── storage/       # DB 연결, ORM 모델 및 마이그레이션
+│   │   ├── models.py             # SQLAlchemy DB 테이블 및 관계
+│   │   ├── database.py           # DB 연결, 세션 및 Alembic 실행
+│   │   └── alembic/              # DB 변경 이력
 │   └── tests/         # 테스트
 ├── Dockerfile
 ├── docker-compose.yml

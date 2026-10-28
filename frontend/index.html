@@ -30,10 +30,10 @@
                         </svg>
                     </button>
                     <nav id="support-menu" class="support-menu" aria-label="후원 방법" hidden>
-                        <a href="https://fairy.hada.io/@opentax" target="_blank" rel="noopener noreferrer">
+                        <a href="https://fairy.hada.io/@opentax" target="_blank" rel="noopener noreferrer" data-support-source="header" data-support-target="fairy">
                             Fairy에서 후원하기 <span aria-hidden="true">↗</span><span class="visually-hidden"> (새 탭에서 열림)</span>
                         </a>
-                        <a href="https://github.com/sponsors/yakkle" target="_blank" rel="noopener noreferrer">
+                        <a href="https://github.com/sponsors/yakkle" target="_blank" rel="noopener noreferrer" data-support-source="header" data-support-target="github">
                             GitHub Sponsors <span aria-hidden="true">↗</span><span class="visually-hidden"> (새 탭에서 열림)</span>
                         </a>
                     </nav>
@@ -43,6 +43,7 @@
             <h1>GiftTax</h1>
             <p>해외주식 증여 금액 계산기</p>
             <p class="disclaimer-short">본 서비스의 계산 결과는 참고용입니다. 정확한 신고는 세무 전문가와 상담하세요.</p>
+            <button id="feedback-open" class="feedback-entry" type="button" aria-controls="feedback-panel" aria-expanded="false">의견 남기기</button>
         </header>
 
         <main>
@@ -78,6 +79,8 @@
                 <button type="submit" class="btn-submit">계산하기</button>
             </form>
 
+            <button id="feedback-error-open" class="feedback-entry feedback-error-entry" type="button" aria-controls="feedback-panel" hidden>불편했던 점을 알려주세요</button>
+
             <div id="result" class="hidden">
                 <h2>계산 결과</h2>
                 <div id="result-content"></div>
@@ -95,6 +98,77 @@
                     <a id="btn-smbs" class="btn-download btn-smbs" href="#" target="_blank" rel="noopener">smbs.biz에서 환율 출력</a>
                 </div>
             </div>
+
+            <section class="feedback-section" aria-labelledby="feedback-title">
+                <details id="feedback-panel" class="feedback-panel">
+                    <summary id="feedback-title">사용해 보니 어떠셨나요?<span>간단한 후기나 개선 의견을 남겨주세요.</span></summary>
+
+                    <form id="feedback-form" class="feedback-form" novalidate>
+                        <p id="feedback-help" class="feedback-help">만족도를 선택하거나 의견만 적어도 보낼 수 있어요. 로그인 없이 운영자에게만 전달됩니다.</p>
+                        <p id="feedback-error" class="error" role="alert" tabindex="-1" hidden></p>
+                        <fieldset id="feedback-fields" class="feedback-fields" aria-describedby="feedback-help feedback-privacy">
+                            <legend class="visually-hidden">사용 의견 작성</legend>
+                            <fieldset class="feedback-rating">
+                                <legend>만족도 <span class="feedback-optional">(선택)</span></legend>
+                                <div class="feedback-rating-options">
+                                    <label><input class="visually-hidden" type="radio" name="satisfaction" value="satisfied"><span>만족해요</span></label>
+                                    <label><input class="visually-hidden" type="radio" name="satisfaction" value="neutral"><span>보통이에요</span></label>
+                                    <label><input class="visually-hidden" type="radio" name="satisfaction" value="dissatisfied"><span>불편했어요</span></label>
+                                </div>
+                                <button id="feedback-clear-rating" class="feedback-text-button" type="button">선택 해제</button>
+                            </fieldset>
+
+                            <div class="form-group">
+                                <label for="feedback-category">의견 종류</label>
+                                <div class="control-shell control-shell-select">
+                                    <select id="feedback-category" name="category">
+                                        <option value="review" selected>이용 후기</option>
+                                        <option value="problem">불편 / 오류</option>
+                                        <option value="suggestion">기능 제안</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="feedback-message">어떤 점이 좋았거나 아쉬웠나요? <span class="feedback-optional">(선택)</span></label>
+                                <textarea id="feedback-message" name="message" rows="3" maxlength="2000" placeholder="불편했던 점이나 있으면 좋을 기능을 자유롭게 적어주세요." aria-describedby="feedback-count feedback-privacy"></textarea>
+                                <p id="feedback-count" class="feedback-count">0 / 2,000자</p>
+                            </div>
+
+                            <details id="feedback-contact" class="feedback-contact">
+                                <summary>답변 받을 이메일 남기기 <span class="feedback-optional">(선택)</span></summary>
+                                <div class="form-group">
+                                    <label for="feedback-email">이메일</label>
+                                    <input id="feedback-email" name="email" type="email" maxlength="254" autocomplete="email" aria-describedby="feedback-email-help" placeholder="reply@example.com">
+                                    <p id="feedback-email-help" class="feedback-help">답변 목적으로만 사용하며, 제출 후 90일이 지나면 삭제됩니다.</p>
+                                    <div id="feedback-consent" hidden>
+                                        <label class="feedback-consent-label"><input id="feedback-email-consent" name="email_consent" type="checkbox" disabled>답변용 이메일 수집에 동의합니다.</label>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <div class="feedback-trap" aria-hidden="true">
+                                <label for="feedback-website">웹사이트</label>
+                                <input id="feedback-website" name="website" type="text" maxlength="200" tabindex="-1" autocomplete="off">
+                            </div>
+                            <p id="feedback-privacy" class="feedback-help">의견은 1년간 보관됩니다. 이름, 계좌번호, 주식 보유 내역 등 개인정보나 금융정보는 적지 말아주세요.</p>
+                            <button id="feedback-submit" class="feedback-submit" type="submit">의견 보내기</button>
+                        </fieldset>
+                    </form>
+
+                    <div id="feedback-success" class="feedback-success" role="status" tabindex="-1" hidden>
+                        <h3>의견을 보내주셔서 감사합니다.</h3>
+                        <p>남겨주신 의견은 서비스를 개선하는 데 참고하겠습니다.</p>
+                        <div id="feedback-support" class="feedback-support" hidden>
+                            <p>도움이 되었다면 후원으로 응원해 주세요.</p>
+                            <div class="feedback-support-links">
+                                <a href="https://fairy.hada.io/@opentax" target="_blank" rel="noopener noreferrer" data-support-source="feedback" data-support-target="fairy">Fairy에서 후원하기 <span aria-hidden="true">↗</span><span class="visually-hidden"> (새 탭에서 열림)</span></a>
+                                <a href="https://github.com/sponsors/yakkle" target="_blank" rel="noopener noreferrer" data-support-source="feedback" data-support-target="github">GitHub Sponsors <span aria-hidden="true">↗</span><span class="visually-hidden"> (새 탭에서 열림)</span></a>
+                            </div>
+                        </div>
+                        <button id="feedback-new" class="feedback-entry" type="button">다른 의견 남기기</button>
+                    </div>
+                </details>
+            </section>
         </main>
     </div>
 

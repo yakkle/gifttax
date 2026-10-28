@@ -2,6 +2,7 @@ import io
 import os
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -9,9 +10,9 @@ from starlette.background import BackgroundTask
 
 from backend.integrations.scraper import smbs
 from backend.integrations.scraper.yahoo import InvalidTickerError
-from backend.models import GiftCalculationInput, GiftCalculationResult
 from backend.pdf.generator import exchange_rate_pdf as pdf_generator
 from backend.pdf.generator import gift_calculation_pdf as gift_pdf_generator
+from backend.schemas import GiftCalculationInput, GiftCalculationResult
 from backend.services import calculator
 
 r = backend_router = APIRouter(prefix="/api")
@@ -24,10 +25,10 @@ async def health_check():
     return {"status": "ok"}
 
 
-def _save_pdf(output: io.BytesIO) -> str:
+def _save_pdf(output: io.BytesIO, kind: Literal["gift", "rate"]) -> str:
     """BytesIO PDF를 스토리지에 저장하고 file_id를 반환한다."""
     os.makedirs(STORAGE_DIR, exist_ok=True)
-    file_id = str(uuid.uuid4())
+    file_id = f"{kind}-{uuid.uuid4()}"
     pdf_path = Path(STORAGE_DIR) / f"{file_id}.pdf"
     pdf_path.write_bytes(output.getvalue())
     return file_id
@@ -47,7 +48,7 @@ async def calculate_gift(input_data: GiftCalculationInput) -> GiftCalculationRes
         # 계산 증빙 PDF 생성
         gift_output = io.BytesIO()
         gift_pdf_generator.generate_pdf_gift_calculation(result, gift_output)
-        gift_pdf_file_id = _save_pdf(gift_output)
+        gift_pdf_file_id = _save_pdf(gift_output, "gift")
 
         # 매매기준환율 PDF 생성
         currency = result.stocks[0].currency if result.stocks else "USD"
@@ -57,7 +58,7 @@ async def calculate_gift(input_data: GiftCalculationInput) -> GiftCalculationRes
         rates = smbs.get_exchange_rates(period_start, period_end, currency)
         rate_output = io.BytesIO()
         pdf_generator.generate_pdf_exchange_rate(rates, currency, rate_output)
-        rate_pdf_file_id = _save_pdf(rate_output)
+        rate_pdf_file_id = _save_pdf(rate_output, "rate")
 
         result.gift_pdf_file_id = gift_pdf_file_id
         result.rate_pdf_file_id = rate_pdf_file_id

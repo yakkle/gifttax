@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>관리자 · GiftTax</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin-dashboard.js" defer></script>
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <main>
+    <a class="back" href="/">← 계산기로 돌아가기</a>
+    <header><p class="eyebrow">GiftTax</p><h1>이용 통계와 사용자 의견</h1><p>서비스 이용 현황을 확인하고 비공개 의견을 관리합니다.</p></header>
+    <p id="message" role="status" aria-live="polite">인증 설정을 확인하고 있습니다.</p>
+    <section id="login" hidden>
+      <div id="passkey-login" hidden>
+        <h2>패스키로 로그인</h2>
+        <p>등록한 기기의 화면 잠금이나 보안 키로 인증해 주세요.</p>
+        <button id="login-button" type="button">패스키로 로그인</button>
+      </div>
+      <form id="setup-form" hidden>
+        <h2>최초 패스키 등록</h2>
+        <p>서버에서 발급한 등록 코드는 10분 동안 한 번 사용할 수 있습니다.</p>
+        <label for="registration-code">등록 코드</label>
+        <input id="registration-code" type="password" required maxlength="256" autocomplete="off" spellcheck="false">
+        <label for="setup-label">패스키 이름</label>
+        <input id="setup-label" required maxlength="80" value="내 패스키" autocomplete="off">
+        <button type="submit">패스키 등록 후 로그인</button>
+      </form>
+      <form id="token-form" hidden>
+        <h2>일회용 토큰으로 로그인</h2>
+        <p>수동 JWT 인증 모드입니다. 서버에서 발급한 토큰은 5분 동안 한 번 사용할 수 있습니다.</p>
+        <label for="login-token">로그인 토큰</label>
+        <textarea id="login-token" required maxlength="4096" autocomplete="off" spellcheck="false" rows="4"></textarea>
+        <button type="submit">로그인</button>
+      </form>
+    </section>
+    <section id="session" hidden>
+      <div class="session-heading"><h2>로그인됨</h2><button id="logout-button" type="button" class="secondary">로그아웃</button></div>
+      <p id="expires"></p>
+      <div id="passkey-management" hidden>
+        <h3>등록된 패스키</h3>
+        <ul id="credentials"></ul>
+        <p class="hint">마지막 패스키는 삭제할 수 없습니다. 패스키를 삭제하면 모든 기기에서 로그아웃됩니다.</p>
+        <form id="add-form">
+          <label for="add-label">추가할 패스키 이름</label>
+          <input id="add-label" required maxlength="80" autocomplete="off" placeholder="예: 예비 보안 키">
+          <button type="submit">패스키 추가</button>
+        </form>
+      </div>
+    </section>
+    <div id="dashboard" hidden>
+      <section aria-labelledby="usage-title">
+        <div class="section-heading"><h2 id="usage-title">이용 통계</h2>
+          <form id="usage-form" class="inline-controls">
+            <label for="usage-days">조회 기간</label>
+            <select id="usage-days"><option value="7">최근 7일</option><option value="30" selected>최근 30일</option><option value="90">최근 90일</option></select>
+            <button type="submit" class="secondary">조회</button>
+          </form>
+        </div>
+        <p id="usage-message" role="status" aria-live="polite"></p>
+        <p class="hint">모든 날짜는 한국 시간 기준입니다. 이용자는 익명 브라우저 식별자로 추정하며, 기기 변경·쿠키 삭제 시 중복될 수 있습니다. 기간 전체 이용자 수는 일별 이용자 수의 합과 다를 수 있습니다.</p>
+        <dl id="usage-totals" class="metric-grid"></dl>
+        <details id="usage-details" hidden><summary>일별 통계 보기</summary>
+          <div class="table-scroll" tabindex="0" role="region" aria-label="일별 이용 통계"><table><caption>날짜별 이용 현황</caption><thead id="usage-head"></thead><tbody id="usage-daily"></tbody></table></div>
+        </details>
+      </section>
+      <section aria-labelledby="feedback-title">
+        <h2 id="feedback-title">비공개 사용자 의견</h2>
+        <p class="hint">본문은 최대 1년, 이메일은 최대 90일 보관합니다. 답변은 이메일을 복사해 별도 메일 앱에서 보내 주세요.</p>
+        <form id="feedback-filters" class="filter-grid">
+          <div><label for="filter-start">시작일</label><input id="filter-start" type="date"></div>
+          <div><label for="filter-end">종료일</label><input id="filter-end" type="date"></div>
+          <div><label for="filter-category">분류</label><select id="filter-category"><option value="">전체</option><option value="review">후기</option><option value="problem">문제 신고</option><option value="suggestion">기능 제안</option></select></div>
+          <div><label for="filter-satisfaction">만족도</label><select id="filter-satisfaction"><option value="">전체</option><option value="satisfied">만족</option><option value="neutral">보통</option><option value="dissatisfied">불만족</option></select></div>
+          <div><label for="filter-status">처리 상태</label><select id="filter-status"><option value="">전체</option><option value="new">신규</option><option value="in_progress">처리 중</option><option value="resolved">완료</option></select></div>
+          <button type="submit">조회</button>
+          <p class="hint filter-help">기본 최근 30일 · 날짜를 비우면 보관 중인 전체 기간 · 최신순, 페이지당 50개</p>
+        </form>
+        <p id="feedback-message" role="status" aria-live="polite"></p>
+        <div id="feedback-list" aria-busy="false"></div>
+        <nav class="pagination" aria-label="의견 페이지 이동">
+          <button id="feedback-prev" type="button" class="secondary">이전</button>
+          <span id="feedback-page" aria-live="polite"></span>
+          <button id="feedback-next" type="button" class="secondary">다음</button>
+        </nav>
+      </section>
+    </div>
+    <noscript>관리자 화면을 사용하려면 JavaScript를 활성화해 주세요.</noscript>
+  </main>
+</body>
+</html>

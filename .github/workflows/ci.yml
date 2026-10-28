@@ -11,12 +11,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - name: Node.js 24 세팅
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
 
       - name: uv 설치 및 Python 3.13 세팅
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
+          activate-environment: true
+          cache-dependency-glob: "pyproject.toml"
 
       - name: 의존성 설치 (dev 포함)
         run: uv pip install -e ".[dev]"
@@ -25,4 +33,7 @@ jobs:
         run: ruff check .
 
       - name: 테스트 (pytest)
-        run: pytest backend/tests/
+        run: uv run --no-sync pytest backend/tests/
+
+      - name: 프론트엔드 테스트
+        run: node --test frontend/tests/*.test.js

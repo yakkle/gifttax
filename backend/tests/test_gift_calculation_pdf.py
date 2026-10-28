@@ -12,7 +12,6 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
-from backend.models import GiftCalculationResult, PriceDataPoint, StockGiftResult
 from backend.pdf.generator.gift_calculation_pdf import (
     _build_smbs_url,
     _build_yahoo_url,
@@ -20,6 +19,7 @@ from backend.pdf.generator.gift_calculation_pdf import (
     _round2,
     generate_pdf_gift_calculation,
 )
+from backend.schemas import GiftCalculationResult, PriceDataPoint, StockGiftResult
 
 # ---------------------------------------------------------------------------
 # 픽스처

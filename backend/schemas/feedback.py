@@ -1,0 +1,88 @@
+"""Pydantic request and response contracts for private feedback."""
+
+from datetime import date
+from enum import StrEnum
+from typing import Literal
+from uuid import UUID
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
+
+
+class Satisfaction(StrEnum):
+    SATISFIED = "satisfied"
+    NEUTRAL = "neutral"
+    DISSATISFIED = "dissatisfied"
+
+
+class FeedbackCategory(StrEnum):
+    REVIEW = "review"
+    PROBLEM = "problem"
+    SUGGESTION = "suggestion"
+
+
+class FeedbackStatus(StrEnum):
+    NEW = "new"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+
+
+class FeedbackSource(StrEnum):
+    GENERAL = "general"
+    RESULT = "result"
+    ERROR = "error"
+
+
+class FeedbackCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    submission_id: UUID
+    satisfaction: Satisfaction | None = None
+    category: FeedbackCategory = FeedbackCategory.REVIEW
+    message: str = Field(default="", max_length=2000)
+    email: str | None = Field(default=None, max_length=254)
+    email_consent: StrictBool = False
+    source: FeedbackSource = FeedbackSource.GENERAL
+    website: str = Field(default="", max_length=200, description="스팸 방지용 빈 필드")
+
+
+class FeedbackReceipt(BaseModel):
+    id: UUID
+    message: str = "의견을 남겨 주셔서 감사합니다."
+
+
+class FeedbackRecord(BaseModel):
+    id: UUID
+    satisfaction: Satisfaction | None
+    category: FeedbackCategory
+    message: str
+    source: FeedbackSource
+    status: FeedbackStatus
+    created_at: AwareDatetime
+    email: str | None = None
+    email_expires_at: AwareDatetime | None = None
+
+
+class FeedbackFilters(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    category: FeedbackCategory | None = None
+    satisfaction: Satisfaction | None = None
+    status: FeedbackStatus | None = None
+    page: int = Field(default=1, ge=1, le=1_000_000)
+
+
+class FeedbackPage(BaseModel):
+    items: list[FeedbackRecord]
+    total: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: Literal[50] = 50
+
+
+class FeedbackStatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: FeedbackStatus
+
+
+class FeedbackStatusReceipt(BaseModel):
+    id: UUID
+    status: FeedbackStatus
