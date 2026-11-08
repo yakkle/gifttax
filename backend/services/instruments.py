@@ -3,7 +3,12 @@
 import re
 
 from backend.integrations.scraper import yahoo
-from backend.schemas.instruments import AssetType, InstrumentDetection, InstrumentMetadata
+from backend.schemas import AssetType, RequestedAssetType
+from backend.schemas.instruments import (
+    InstrumentDetection,
+    InstrumentMetadata,
+    InstrumentResolution,
+)
 
 INSTRUMENT_TYPES: dict[str, AssetType] = {"EQUITY": "stock", "ETF": "etf"}
 UNSUPPORTED_INSTRUMENT_TYPES = {
@@ -65,3 +70,46 @@ def lookup_instrument(ticker: str) -> InstrumentDetection:
             message="종목 정보를 조회하지 못했습니다. 다시 시도하거나 주식 또는 ETF를 선택해 주세요.",
         )
     return detect_instrument(metadata)
+
+
+def resolve_instrument(ticker: str, requested_type: RequestedAssetType = "auto") -> InstrumentResolution:
+    result = lookup_instrument(ticker)
+    if result.detection_status == "unsupported":
+        raise InstrumentError("UNSUPPORTED_INSTRUMENT", result.message, result.ticker, status_code=422)
+    if result.asset_type:
+        if requested_type != "auto" and requested_type != result.asset_type:
+            raise InstrumentError(
+                "ASSET_TYPE_MISMATCH", "선택한 상품 유형과 자동 판별 결과가 다릅니다.",
+                result.ticker, status_code=422,
+            )
+        return InstrumentResolution(metadata=result, asset_type=result.asset_type, detection_method="auto")
+    if requested_type == "auto":
+        raise InstrumentError(
+            "ASSET_TYPE_REQUIRED", result.message, result.ticker, status_code=422
+        )
+    return InstrumentResolution(metadata=result, asset_type=requested_type, detection_method="manual")
+
+
+def validate_price_metadata(
+    resolution: InstrumentResolution, metadata: InstrumentMetadata, currency: str
+) -> None:
+    """실제 시세 응답에서 추가로 확인된 유형·통화도 수동 선택으로 우회하지 않는다."""
+    detection = detect_instrument(metadata)
+    if detection.detection_status == "unsupported":
+        raise InstrumentError(
+            "UNSUPPORTED_INSTRUMENT", detection.message, metadata.ticker, status_code=422
+        )
+    if detection.asset_type and detection.asset_type != resolution.asset_type:
+        raise InstrumentError(
+            "ASSET_TYPE_MISMATCH", "상품 유형이 변경되었습니다. 종목 정보를 다시 확인해 주세요.",
+            metadata.ticker, status_code=422,
+        )
+    validate_instrument_currency(metadata, currency)
+
+
+def validate_instrument_currency(metadata: InstrumentMetadata, currency: str) -> None:
+    if metadata.currency and metadata.currency != currency:
+        raise InstrumentError(
+            "CURRENCY_MISMATCH", f"시세 통화는 {metadata.currency}입니다. 입력 통화를 확인해 주세요.",
+            metadata.ticker, status_code=422,
+        )

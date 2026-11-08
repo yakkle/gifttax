@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 from backend.admin import main as admin_command
 from backend.main import app
 
+pytestmark = pytest.mark.usefixtures("legacy_stock_price_fixtures")
+
 ORIGIN = "https://admin.example.test"
 
 

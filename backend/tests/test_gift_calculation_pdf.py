@@ -12,6 +12,8 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
+import pytest
+
 from backend.pdf.generator.gift_calculation_pdf import (
     _build_smbs_url,
     _build_yahoo_url,
@@ -20,6 +22,8 @@ from backend.pdf.generator.gift_calculation_pdf import (
     generate_pdf_gift_calculation,
 )
 from backend.schemas import GiftCalculationResult, PriceDataPoint, StockGiftResult
+
+pytestmark = pytest.mark.usefixtures("legacy_stock_price_fixtures")
 
 # ---------------------------------------------------------------------------
 # 픽스처
@@ -322,7 +326,7 @@ class TestCalculateEndpointPdfFileIds:
             response = client.post("/api/calculate", json=payload)
 
         assert response.status_code == 400
-        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
+        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]["message"]
 
     def test_calculate_missing_stocks_returns_422(self):
         from fastapi.testclient import TestClient

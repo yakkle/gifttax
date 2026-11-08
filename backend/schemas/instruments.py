@@ -5,9 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from backend.schemas import StockPrice
+from backend.schemas import AssetType, StockPrice
 
-type AssetType = Literal["stock", "etf"]
 type DetectionStatus = Literal["detected", "needs_selection", "unsupported"]
 
 
@@ -33,3 +32,9 @@ class InstrumentDetection(InstrumentMetadata):
 class InstrumentPriceHistory(BaseModel):
     metadata: InstrumentMetadata
     prices: list[StockPrice]
+
+
+class InstrumentResolution(BaseModel):
+    metadata: InstrumentMetadata
+    asset_type: AssetType
+    detection_method: Literal["auto", "manual"]

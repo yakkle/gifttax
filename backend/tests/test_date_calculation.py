@@ -14,6 +14,8 @@ from backend.services.calculator import (
     validate_calculation_availability,
 )
 
+pytestmark = pytest.mark.usefixtures("legacy_stock_price_fixtures")
+
 
 class TestDateCalculation:
     """증여일 기준 전후 2개월 계산 테스트"""

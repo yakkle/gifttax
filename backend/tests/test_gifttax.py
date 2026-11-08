@@ -12,6 +12,8 @@ from backend.integrations.scraper.yahoo import InvalidTickerError
 from backend.main import app
 from backend.schemas import GiftCalculationInput, StockInput
 
+pytestmark = pytest.mark.usefixtures("legacy_stock_price_fixtures")
+
 client = TestClient(app)
 
 
@@ -254,7 +256,7 @@ class TestInvalidTicker:
             response = client.post("/api/calculate", json=payload)
 
         assert response.status_code == 400
-        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
+        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]["message"]
 
     def test_invalid_ticker_appl_returns_400(self):
         """APPL (잘못된 티커) 입력 시 400 에러 반환"""
@@ -270,7 +272,7 @@ class TestInvalidTicker:
             response = client.post("/api/calculate", json=payload)
 
         assert response.status_code == 400
-        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
+        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]["message"]
 
     def test_invalid_ticker_generate_gift_pdf(self):
         """잘못된 종목 코드 입력 시 /api/calculate 에서 400 에러 반환"""
@@ -286,7 +288,7 @@ class TestInvalidTicker:
             response = client.post("/api/calculate", json=payload)
 
         assert response.status_code == 400
-        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
+        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]["message"]
 
     def test_invalid_ticker_generate_pdf(self):
         """잘못된 종목 코드 입력 시 /api/calculate 에서 400 에러 반환"""
@@ -302,4 +304,4 @@ class TestInvalidTicker:
             response = client.post("/api/calculate", json=payload)
 
         assert response.status_code == 400
-        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]
+        assert "종목 코드를 찾을 수 없습니다" in response.json()["detail"]["message"]

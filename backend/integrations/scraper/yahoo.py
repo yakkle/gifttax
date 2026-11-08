@@ -148,54 +148,13 @@ def get_stock_prices(
     end_date: date,
     country: str = "United States",
 ) -> list[tuple[date, Decimal]]:
-    symbol = ticker.upper()
+    history = get_instrument_prices(ticker, start_date, end_date)
+    return [(point.date, point.close) for point in history.prices]
 
-    period1 = int(start_date.strftime("%s"))
-    period2 = int(end_date.strftime("%s"))
 
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-
-    session = requests.Session(impersonate="chrome")
-    response = session.get(
-        url,
-        params={
-            "period1": period1,
-            "period2": period2,
-            "interval": "1d",
-        },
-    )
-
-    if response.status_code == 404:
-        raise InvalidTickerError(f"종목 코드를 찾을 수 없습니다: {ticker}")
-
-    if response.status_code != 200:
-        raise YahooFinanceError(f"Failed to fetch data for {ticker}: {response.status_code}")
-
-    data = response.json()
-
-    if "chart" not in data:
-        raise InvalidTickerError(f"종목 코드를 찾을 수 없습니다: {ticker}")
-
-    if not data["chart"].get("result"):
-        raise InvalidTickerError(f"종목 코드를 찾을 수 없습니다: {ticker}")
-
-    result = data["chart"]["result"][0]
-
-    if "timestamp" not in result:
-        raise InvalidTickerError(f"종목 코드를 찾을 수 없습니다: {ticker}")
-
-    timestamps = result["timestamp"]
-    quotes = result["indicators"]["quote"][0]
-
-    results: list[tuple[date, Decimal]] = []
-
-    for i, ts in enumerate(timestamps):
-        close = quotes["close"][i]
-        if close is not None:
-            price_date = date.fromtimestamp(ts)
-            close_price = Decimal(str(close))
-            results.append((price_date, close_price))
-
-    results.sort(key=lambda x: x[0])
-
-    return results
+def get_history_source_url(ticker: str, start_date: date, end_date: date) -> str:
+    """사용자에게 표시하는 종료일을 포함하는 종가 출처 링크."""
+    period1 = int(datetime.combine(start_date, datetime.min.time(), UTC).timestamp())
+    period2 = int(datetime.combine(end_date + timedelta(days=1), datetime.min.time(), UTC).timestamp())
+    symbol = quote(ticker, safe="")
+    return f"https://finance.yahoo.com/quote/{symbol}/history/?period1={period1}&period2={period2}"

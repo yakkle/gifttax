@@ -20,6 +20,8 @@ from backend.storage.admin import AdminRepository
 from backend.storage.models import DailyUsageCount, UsageEvent
 from backend.storage.usage import UsageRepository
 
+pytestmark = pytest.mark.usefixtures("legacy_stock_price_fixtures")
+
 ORIGIN = "https://admin.example.test"
 NOW = datetime(2026, 10, 27, 12, tzinfo=KOREA)
 CALCULATION = {

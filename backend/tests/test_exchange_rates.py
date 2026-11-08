@@ -3,13 +3,11 @@
 import io
 from datetime import date
 from decimal import Decimal
-from typing import override
 from unittest.mock import Mock, patch
 
 import pytest
 from curl_cffi.requests.exceptions import RequestException
 from fastapi.testclient import TestClient
-from reportlab.pdfgen import canvas
 
 from backend.integrations.scraper import smbs
 from backend.main import app
@@ -17,6 +15,8 @@ from backend.pdf.generator import exchange_rate_pdf, gift_calculation_pdf
 from backend.pdf.generator.common import format_exchange_rate
 from backend.schemas import GiftCalculationInput, PriceDataPoint, StockInput
 from backend.services import calculator, exchange_rates
+
+pytestmark = pytest.mark.usefixtures("legacy_stock_price_fixtures")
 
 
 @pytest.fixture
@@ -206,43 +206,6 @@ def test_jpy_gift_uses_normalized_rate(calculation_rates):
     assert result.exchange_rate == Decimal("9.3943")
     assert result.gift_amount_krw == Decimal(18789)
 
-
-@pytest.fixture
-def recorded_pdf(monkeypatch):
-    """실제 PDF를 생성하면서 출력 텍스트·링크·페이지 수를 함께 관찰한다."""
-    instances = []
-    base = canvas.Canvas
-
-    class RecordingCanvas(base):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.texts = []
-            self.links = []
-            self.page_count = 0
-            instances.append(self)
-
-        @override
-        def drawString(self, x, y, text, *args, **kwargs):
-            self.texts.append(text)
-            return super().drawString(x, y, text, *args, **kwargs)
-
-        @override
-        def drawRightString(self, x, y, text, *args, **kwargs):
-            self.texts.append(text)
-            return super().drawRightString(x, y, text, *args, **kwargs)
-
-        @override
-        def linkURL(self, url, *args, **kwargs):
-            self.links.append(url)
-            return super().linkURL(url, *args, **kwargs)
-
-        @override
-        def showPage(self):
-            self.page_count += 1
-            return super().showPage()
-
-    monkeypatch.setattr(canvas, "Canvas", RecordingCanvas)
-    return instances
 
 
 def test_endpoint_generates_both_currencies_without_refetching(
