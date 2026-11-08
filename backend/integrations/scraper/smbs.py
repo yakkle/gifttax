@@ -1,8 +1,10 @@
 import re
 from datetime import date, timedelta
 from decimal import Decimal
+from xml.etree import ElementTree
 
 from curl_cffi import requests as curl_requests
+from curl_cffi.requests.exceptions import RequestException
 
 CURRENCY_MAP = {
     "USD": "USD",
@@ -15,6 +17,9 @@ CURRENCY_MAP = {
     "AUD": "AUD",
 }
 
+# StdExRate_xml.jsp의 JPY 원본 값은 100엔당 원화 금액이다.
+CURRENCY_UNITS = {"JPY": 100}
+
 
 class SMBSError(Exception):
     pass
@@ -23,22 +28,22 @@ class SMBSError(Exception):
 def parse_xml_response(xml_text: str) -> list[tuple[date, Decimal]]:
     results: list[tuple[date, Decimal]] = []
 
-    pattern = r"<set[^>]*label='(\d{2}\.\d{2}\.\d{2})'[^>]*value='([^']+)'[^>]*>"
-    matches = re.findall(pattern, xml_text)
-
-    for label, value in matches:
-        try:
-            day_str = label.replace(".", "")
-            year = 2000 + int(day_str[:2])
-            month = int(day_str[2:4])
-            day = int(day_str[4:6])
-            parsed_date = date(year, month, day)
-            rate = Decimal(value.replace(",", ""))
-            results.append((parsed_date, rate))
-        except (ValueError, IndexError):
-            continue
-
-    return results
+    try:
+        root = ElementTree.fromstring(xml_text.strip())
+        if root.tag != "chart":
+            raise ValueError("Expected chart response")
+        for element in root.findall("set"):
+            label = element.attrib["label"]
+            if not re.fullmatch(r"\d{2}\.\d{2}\.\d{2}", label):
+                raise ValueError("Invalid rate date")
+            year, month, day = map(int, label.split("."))
+            rate = Decimal(element.attrib["value"].replace(",", ""))
+            if not rate.is_finite() or rate <= 0:
+                raise ValueError("Invalid exchange rate")
+            results.append((date(2000 + year, month, day), rate))
+    except (ElementTree.ParseError, ValueError, KeyError, ArithmeticError) as error:
+        raise SMBSError("환율 응답을 해석할 수 없습니다.") from error
+    return sorted(results)
 
 
 def get_exchange_rate(
@@ -50,8 +55,8 @@ def get_exchange_rate(
     if not currency_code:
         raise ValueError(f"Unsupported currency: {currency}")
 
-    search_date = target_date
-    for _ in range(max_search_days):
+    for offset in range(max_search_days):
+        search_date = target_date - timedelta(days=offset)
         start_date = search_date
         end_date = search_date
 
@@ -59,8 +64,6 @@ def get_exchange_rate(
 
         if rates:
             return rates[0][1], rates[0][0]
-
-        search_date = search_date - timedelta(days=1)
 
     raise SMBSError(f"No exchange rate data found for {currency} within {max_search_days} days")
 
@@ -79,13 +82,20 @@ def get_exchange_rates(
         "arr_value": f"{currency_code}_{start_date.strftime('%Y-%m-%d')}_{end_date.strftime('%Y-%m-%d')}"
     }
 
-    session = curl_requests.Session(impersonate="chrome", verify=False)
-    response = session.get(url, params=params, timeout=30)
+    try:
+        with curl_requests.Session(impersonate="chrome") as session:
+            response = session.get(url, params=params, timeout=30)
+    except RequestException as error:
+        raise SMBSError("환율 데이터를 조회하지 못했습니다.") from error
 
     if response.status_code != 200:
         raise SMBSError(f"Failed to fetch exchange rates: {response.status_code}")
 
-    return parse_xml_response(response.text)
+    rates = parse_xml_response(response.text)
+    if any(not start_date <= rate_date <= end_date for rate_date, _ in rates):
+        raise SMBSError("조회 기간과 환율 응답 날짜가 일치하지 않습니다.")
+    unit = Decimal(CURRENCY_UNITS.get(currency_code, 1))
+    return [(rate_date, rate / unit) for rate_date, rate in rates]
 
 
 def datetime_str_to_date(date_str: str) -> date:

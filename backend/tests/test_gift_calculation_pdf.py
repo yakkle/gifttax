@@ -283,8 +283,8 @@ class TestCalculateEndpointPdfFileIds:
 
         with (
             patch("backend.services.calculator.scraper.get_stock_prices") as mock_prices,
-            patch("backend.services.calculator.smbs.get_exchange_rate") as mock_rate,
-            patch("backend.services.calculator.smbs.get_exchange_rates") as mock_rates,
+            patch("backend.services.exchange_rates.smbs.get_exchange_rate") as mock_rate,
+            patch("backend.services.exchange_rates.smbs.get_exchange_rates") as mock_rates,
         ):
             mock_prices.return_value = [
                 (date(2024, 3, 2), Decimal("195.30")),

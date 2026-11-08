@@ -53,7 +53,7 @@
 
   ■ 환율 정보                                    (Bold 11pt)
   ┌──────────────┬────────────────────────────┐
-  │ 환율 적용일  │ YYYY-MM-DD (증여일 직전 영업일) │
+  │ 환율 적용일  │ YYYY-MM-DD (당일 고시/이전 고시일 대체) │
   │ 매매기준환율 │ 0,000.00 KRW/{CURRENCY}    │
   └──────────────┴────────────────────────────┘
   출처: http://www.smbs.biz/...  (클릭 가능 하이퍼링크)
@@ -164,7 +164,8 @@ http://www.smbs.biz/ExRate/StdExRatePop.jsp
 ```
 
 - 기간: `actual_rate_date - 1일` ~ `actual_rate_date + 1일`
-- `actual_rate_date`: 증여일 직전 실제 영업일 (smbs.biz에서 환율 데이터가 존재하는 날)
+- `actual_rate_date`: 증여일 당일 우선 조회 후 실제로 적용한 고시일. 당일 데이터가 없을 때만 이전 고시일을 사용한다.
+- 증빙 구간과 출처 URL은 services에서 준비한다. PDF 생성 시 외부 데이터를 다시 조회하지 않는다.
 
 ### 페이지 넘김 규칙
 
@@ -181,7 +182,7 @@ http://www.smbs.biz/ExRate/StdExRatePop.jsp
 ### 개요
 
 - 파일명: `exchange_rate_{uuid}.pdf`
-- 엔드포인트: `POST /api/generate-pdf`
+- 생성: `POST /api/calculate` 응답의 `rate_pdf_file_id`로 다운로드
 - 용도: 매매기준환율 출처 증빙 문서
 - 페이지 크기: A4
 - 폰트: NanumGothic (한글 지원), 폴백: Helvetica
@@ -191,7 +192,11 @@ http://www.smbs.biz/ExRate/StdExRatePop.jsp
 ```
 [문서 헤더]
   제목:  {CURRENCY}/KRW 환율증명서               (Bold 16pt)
-  기간:  YYYY-MM-DD ~ YYYY-MM-DD                (10pt)
+  증여일 / 실제 환율 적용일 / 적용 사유          (10pt)
+  적용 환율: 외화 1단위당 KRW
+  조회 기간: YYYY-MM-DD ~ YYYY-MM-DD
+  원본 고시 단위가 1이 아니면 원본 값과 환산 설명 표시
+  데이터 출처: 서울외국환중개 (원문 조회 링크)
   ─────────────────────────────────────────────  (구분선 0.5pt)
 
 [환율 데이터 테이블]
@@ -203,6 +208,11 @@ http://www.smbs.biz/ExRate/StdExRatePop.jsp
   │ ...                     │                            ...  │
   └─────────────────────────┴─────────────────────────────────┘
 ```
+
+- 사용한 통화·실제 고시일별로 섹션을 구분하고 각 섹션을 새 페이지에서 시작한다.
+- 동일한 통화·고시일을 여러 종목이 사용해도 한 번만 출력한다.
+- 실제 적용한 날짜의 표 행은 연파란 배경과 굵은 글꼴로 강조한다.
+- 계산 결과의 `exchange_rate_evidence`에 담긴 데이터를 그대로 출력하며 재조회하지 않는다.
 
 ### 시각 디자인 규칙
 
@@ -227,7 +237,7 @@ http://www.smbs.biz/ExRate/StdExRatePop.jsp
 ### 데이터 기간
 
 - `actual_rate_date - 1일` ~ `actual_rate_date + 1일`
-- `actual_rate_date`: 증여일 직전 실제 영업일
+- `actual_rate_date`: 실제 적용한 고시일 (당일 우선, 없을 때만 이전 고시일)
 - 데이터 출처: smbs.biz XML API (`StdExRate_xml.jsp`)
 
 ### 페이지 넘김 규칙
@@ -259,8 +269,10 @@ http://www.smbs.biz/ExRate/StdExRatePop.jsp
 |---|---|---|
 | 종가 (외화) | 소수 둘째 자리 반올림 | `195.30` |
 | 평균 종가 | 소수 둘째 자리 반올림 | `200.00` |
-| 환율 | 소수 둘째 자리 | `1,300.00` |
+| 환율 | 최소 소수 둘째 자리, 계산에 사용한 유효 자릿수 보존 | `1,300.00`, `9.3943` |
 | 증여금액 | 정수 (원 단위) | `2,600,000` |
+
+- 모든 환율과 환율 표는 외화 1단위당 KRW 기준이다. JPY 원본 고시값은 KRW/100JPY이므로 integrations에서 100으로 나누고 PDF에는 원본 고시값과 단위를 함께 표시한다.
 
 ### 하이퍼링크
 

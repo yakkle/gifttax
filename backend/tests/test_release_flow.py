@@ -63,11 +63,11 @@ def test_user_to_admin_flow_survives_restart(database_path, monkeypatch, capsys)
         lambda *args: [(date(2025, 9, 7), Decimal("200"))],
     )
     monkeypatch.setattr(
-        "backend.services.calculator.smbs.get_exchange_rate",
+        "backend.services.exchange_rates.smbs.get_exchange_rate",
         lambda *args: (Decimal("1300"), date(2025, 11, 5)),
     )
     monkeypatch.setattr(
-        "backend.services.calculator.smbs.get_exchange_rates",
+        "backend.services.exchange_rates.smbs.get_exchange_rates",
         lambda *args: [(date(2025, 11, 5), Decimal("1300"))],
     )
     with TestClient(app, base_url=ORIGIN) as client:

@@ -3,13 +3,20 @@ from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 
-from backend.integrations.scraper import smbs
 from backend.integrations.scraper import yahoo as scraper
 from backend.schemas import (
+    ExchangeRateEvidence,
     GiftCalculationInput,
     GiftCalculationResult,
     PriceDataPoint,
     StockGiftResult,
+)
+from backend.services.exchange_rates import (
+    collect_exchange_rate_evidence,
+    load_exchange_rate_evidence,
+)
+from backend.services.exchange_rates import (
+    get_exchange_rate_pdf_period as get_exchange_rate_pdf_period,
 )
 from backend.tax import engine as tax_engine
 
@@ -53,6 +60,8 @@ def calculate_gift_amount(
     ticker: str,
     qty: int,
     currency: str = "USD",
+    *,
+    rate_cache: dict[str, ExchangeRateEvidence] | None = None,
 ) -> StockGiftResult:
     validate_calculation_availability(gift_date)
 
@@ -78,19 +87,14 @@ def calculate_gift_amount(
 
     price_data = [PriceDataPoint(date=str(pd[0]), close=str(pd[1])) for pd in prices]
 
-    # 환율: 직전영업일 기준 (주말/공휴일 고려하여 최대 30일 전까지 검색)
-    rate_value, actual_rate_date = smbs.get_exchange_rate(gift_date, currency)
-
-    # 환율 데이터 표시: 실제 환율 적용일 기준 전후 1일
-    exchange_rate_start = actual_rate_date - timedelta(days=1)
-    exchange_rate_end = actual_rate_date + timedelta(days=1)
-    exchange_rate_data_raw = smbs.get_exchange_rates(
-        exchange_rate_start, exchange_rate_end, currency
-    )
-
-    exchange_rate_data = [
-        PriceDataPoint(date=str(rd[0]), close=str(rd[1])) for rd in exchange_rate_data_raw
-    ]
+    # 당일 고시 환율 우선, 데이터가 없을 때만 이전 고시일로 검색한다.
+    currency = currency.upper()
+    evidence = rate_cache.get(currency) if rate_cache is not None else None
+    if evidence is None:
+        evidence = load_exchange_rate_evidence(gift_date, currency)
+        if rate_cache is not None:
+            rate_cache[currency] = evidence
+    rate_value, actual_rate_date = evidence.rate, evidence.actual_rate_date
 
     # 증여금액 = 반올림된 평균종가 × 수량 × 환율 (원 단위 반올림)
     gift_amount = Decimal(round(average_price * Decimal(qty) * rate_value))
@@ -105,18 +109,9 @@ def calculate_gift_amount(
         period_end=period_end,
         exchange_rate=rate_value,
         exchange_rate_date=actual_rate_date,
-        exchange_rate_data=exchange_rate_data,
+        exchange_rate_data=evidence.rates,
         gift_amount_krw=gift_amount,
     )
-
-
-def get_exchange_rate_pdf_period(actual_rate_date: date) -> tuple[date, date]:
-    """환율 PDF 조회 기간 반환.
-
-    실제 환율 적용일(actual_rate_date) 기준 전후 1일.
-    actual_rate_date는 증여일 직전영업일로, 주말/공휴일을 건너뛴 실제 환율 데이터가 존재하는 날짜다.
-    """
-    return actual_rate_date - timedelta(days=1), actual_rate_date + timedelta(days=1)
 
 
 def calculate_total_gift(
@@ -125,13 +120,17 @@ def calculate_total_gift(
     results: list[StockGiftResult] = []
     total_amount = Decimal(0)
     actual_exchange_rate_date = None
+    validate_calculation_availability(input_data.gift_date)
+    rates_by_currency: dict[str, ExchangeRateEvidence] = {}
 
     for stock in input_data.stocks:
+        currency = stock.currency.upper()
         result = calculate_gift_amount(
             gift_date=input_data.gift_date,
             ticker=stock.ticker,
             qty=stock.qty,
-            currency=stock.currency,
+            currency=currency,
+            rate_cache=rates_by_currency,
         )
         results.append(result)
         total_amount += result.gift_amount_krw
@@ -146,4 +145,5 @@ def calculate_total_gift(
         total_gift_amount_krw=total_amount,
         estimated_tax=estimated_tax,
         exchange_rate_date=actual_exchange_rate_date or input_data.gift_date,
+        exchange_rate_evidence=collect_exchange_rate_evidence(results),
     )

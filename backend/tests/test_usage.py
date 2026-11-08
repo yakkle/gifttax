@@ -185,11 +185,11 @@ def test_calculation_and_both_pdf_downloads_are_counted_on_server(client, monkey
         lambda *args: [(date(2025, 9, 7), Decimal("200"))],
     )
     monkeypatch.setattr(
-        "backend.services.calculator.smbs.get_exchange_rate",
+        "backend.services.exchange_rates.smbs.get_exchange_rate",
         lambda *args: (Decimal("1300"), date(2025, 11, 5)),
     )
     monkeypatch.setattr(
-        "backend.services.calculator.smbs.get_exchange_rates",
+        "backend.services.exchange_rates.smbs.get_exchange_rates",
         lambda *args: [(date(2025, 11, 5), Decimal("1300"))],
     )
     response = client.post("/api/calculate", json=CALCULATION)

@@ -24,8 +24,10 @@ from backend.pdf.generator.common import (
     build_longtable_style,
     draw_longtable,
     font,
+    format_exchange_rate,
 )
 from backend.schemas import GiftCalculationResult, StockGiftResult
+from backend.services.exchange_rates import get_exchange_rate_pdf_period
 
 # 컬럼 x 좌표
 COL1_X = LEFT_MARGIN
@@ -218,10 +220,12 @@ def _draw_link(ps: PageState, label: str, url: str, indent: float = 5 * mm) -> N
     c.setFillColorRGB(*LINK_COLOR)
     link_x = LEFT_MARGIN + indent + 38 * mm
     link_y = ps.y
-    c.drawString(link_x, link_y, url)
+    # 긴 조회 파라미터는 클릭 대상에만 보존해 본문 영역 밖으로 넘치지 않게 한다.
+    display_url = url.split("?", 1)[0]
+    c.drawString(link_x, link_y, display_url)
 
     # 클릭 가능 영역 설정
-    link_width = min(len(url) * 4.5, CONTENT_WIDTH - 38 * mm)
+    link_width = min(len(display_url) * 4.5, CONTENT_WIDTH - 38 * mm)
     c.linkURL(url, (link_x, link_y - 2, link_x + link_width, link_y + 8), relative=0)
 
     c.setFillColorRGB(*NORMAL_COLOR)
@@ -231,7 +235,7 @@ def _draw_link(ps: PageState, label: str, url: str, indent: float = 5 * mm) -> N
 def _draw_formula_box(ps: PageState, stock: StockGiftResult) -> None:
     """증여금액 계산식을 강조 박스 안에 출력."""
     avg_disp = _round2(stock.price_average)
-    rate_disp = _round2(stock.exchange_rate)
+    rate_disp = format_exchange_rate(stock.exchange_rate)
     krw_disp = _format_krw(stock.gift_amount_krw)
 
     line1 = f"{avg_disp} {stock.currency}  ×  {stock.qty:,}주  ×  {rate_disp} KRW/{stock.currency}"
@@ -321,8 +325,9 @@ def _draw_stock_section(
 
     # ■ 환율 정보
     _draw_sub_heading(ps, "환율 정보")
-    rate_date_str = f"{stock.exchange_rate_date.isoformat()} (증여일 직전 영업일)"
-    rate_str = f"{_round2(stock.exchange_rate)} KRW/{stock.currency}"
+    rate_basis = "증여일 고시" if stock.exchange_rate_date == gift_date else "증여일 이전 고시일 대체"
+    rate_date_str = f"{stock.exchange_rate_date.isoformat()} ({rate_basis})"
+    rate_str = f"{format_exchange_rate(stock.exchange_rate)} KRW/{stock.currency}"
     _draw_info_table(
         ps,
         [
@@ -434,8 +439,7 @@ def generate_pdf_gift_calculation(
     total = len(result.stocks)
     for idx, stock in enumerate(result.stocks, start=1):
         # 환율 출처 기간: actual_rate_date ±1일
-        rate_period_start = stock.exchange_rate_date - timedelta(days=1)
-        rate_period_end = stock.exchange_rate_date + timedelta(days=1)
+        rate_period_start, rate_period_end = get_exchange_rate_pdf_period(stock.exchange_rate_date)
 
         _draw_stock_section(
             ps,

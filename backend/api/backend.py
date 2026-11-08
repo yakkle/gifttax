@@ -8,7 +8,6 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
-from backend.integrations.scraper import smbs
 from backend.integrations.scraper.yahoo import InvalidTickerError
 from backend.pdf.generator import exchange_rate_pdf as pdf_generator
 from backend.pdf.generator import gift_calculation_pdf as gift_pdf_generator
@@ -51,13 +50,10 @@ async def calculate_gift(input_data: GiftCalculationInput) -> GiftCalculationRes
         gift_pdf_file_id = _save_pdf(gift_output, "gift")
 
         # 매매기준환율 PDF 생성
-        currency = result.stocks[0].currency if result.stocks else "USD"
-        period_start, period_end = calculator.get_exchange_rate_pdf_period(
-            result.exchange_rate_date
-        )
-        rates = smbs.get_exchange_rates(period_start, period_end, currency)
         rate_output = io.BytesIO()
-        pdf_generator.generate_pdf_exchange_rate(rates, currency, rate_output)
+        pdf_generator.generate_pdf_exchange_rate_report(
+            result.exchange_rate_evidence, result.gift_date, rate_output
+        )
         rate_pdf_file_id = _save_pdf(rate_output, "rate")
 
         result.gift_pdf_file_id = gift_pdf_file_id

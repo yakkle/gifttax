@@ -6,6 +6,7 @@ exchange_rate_pdf.py 와 gift_calculation_pdf.py 에서 공통으로 사용한�
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -47,6 +48,12 @@ def _register_korean_font() -> bool:
 
 
 _KOREAN_FONT_AVAILABLE = _register_korean_font()
+
+
+def format_exchange_rate(value: Decimal) -> str:
+    """1통화당 환율의 계산 정밀도를 유지하되 최소 소수 두 자리를 표시한다."""
+    places = max(2, -value.normalize().as_tuple().exponent)
+    return f"{value:,.{places}f}"
 
 
 def font(bold: bool = False) -> str:
