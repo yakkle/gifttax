@@ -96,6 +96,7 @@ PDF Report 생성
 
 # 4. 프로젝트 구조
  
+```
 gifttax/
 ├── frontend/
 └── backend/
@@ -107,6 +108,7 @@ gifttax/
     ├── schemas
     ├── storage
     └── tests
+```
 
 ---
 
@@ -160,22 +162,22 @@ PdfReportService
 POST /calculate
 
 request
-
+```json
 {
   "ticker": "AAPL",
   "quantity": 10,
   "gift_date": "2024-05-01"
 }
-
+```
 response
-
+```json
 {
   "stock_price": 200,
   "exchange_rate": 1300,
   "gift_value": 2600000,
   "estimated_tax": 0
 }
-
+```
 ---
 
 PDF 생성
