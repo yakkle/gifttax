@@ -215,23 +215,41 @@ main {
 }
 
 .stock-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 104px 32px;
     gap: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 16px;
     align-items: center;
 }
 
-.stock-row input[type="text"] {
-    flex: 2;
+.stock-row > input,
+.stock-row > .control-shell { min-width: 0; }
+
+.instrument-info {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
-.stock-row input[type="number"] {
-    flex: 1;
-}
+.instrument-status { font-size: 0.85rem; color: #24527a; overflow-wrap: anywhere; }
+.instrument-status.warning { color: #8a4b08; }
+.instrument-retry { border: 0; background: transparent; color: #24527a; text-decoration: underline; cursor: pointer; font: inherit; font-size: 0.85rem; }
 
-.stock-row .control-shell-select {
-    flex: 1;
+.stock-row .manual-selection {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    font-size: 0.9rem;
 }
+.stock-row .manual-selection .control-shell { width: 160px; }
+.asset-badge { display: inline-block; border-radius: 4px; padding: 1px 7px; background: #eef6ff; color: #24527a; font-size: 0.8rem; vertical-align: middle; }
+.valuation-note { color: #526479; font-size: 0.9rem; }
+.exchange-rate-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.exchange-rate-links .btn-download { flex: 1 1 220px; padding: 12px; font-size: 0.9rem; }
 
 .btn-add {
     background: #3498db;
@@ -323,6 +341,7 @@ main {
 
 .stock-result p {
     margin: 5px 0;
+    overflow-wrap: anywhere;
 }
 
 .total-amount {
@@ -337,6 +356,7 @@ main {
 .download-buttons {
     display: flex;
     gap: 10px;
+    flex-wrap: wrap;
 }
 
 .btn-download {
@@ -505,7 +525,7 @@ main {
         grid-row: 2;
     }
 
-    .stock-row .control-shell-select {
+    .stock-row > .currency-control {
         grid-column: 2 / 4;
         grid-row: 2;
     }

@@ -44,6 +44,11 @@ async def app_js():
     return HTMLResponse(content="Not Found", status_code=404)
 
 
+@r.get("/instruments.js", include_in_schema=False)
+async def instruments_js():
+    return admin_asset("instruments.js", "application/javascript")
+
+
 @r.get("/style.css")
 async def style_css():
     if frontend_path:
