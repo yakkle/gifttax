@@ -1,7 +1,7 @@
 # PDF Report Specification
 
 해외 상장 주식·ETF 증여금액 서비스가 생성하는 두 PDF의 현재 출력 명세다.
-계산·API 예시는 [README](README.md), 평가 로직은 [계산·세금 엔진 안내](TAX_ENGINE.md)를 참고한다.
+계산·API 예시는 [README](README.md), 평가 로직은 [계산 명세](docs/CALCULATION_SPEC.md)를 참고한다.
 
 두 PDF는 법정 증여세 신고서 작성을 보조하는 **평가 증빙자료**다.
 서비스가 조회한 데이터와 계산 근거를 정리한 문서이며 법정 신고서나 서울외국환중개가 직접 발급한 공식 증명서를 대신하지 않는다.

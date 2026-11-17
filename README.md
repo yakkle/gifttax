@@ -13,7 +13,7 @@
 
 두 PDF는 법정 증여세 신고서 작성을 보조하는 **평가 증빙자료**입니다. 법정 신고서나 서울외국환중개가 발급한 공식 증명서를 대신하지 않습니다. 현재 `estimated_tax`는 증여세 엔진이 미구현인 상태의 `0`이므로 실제 세액을 의미하지 않습니다.
 
-계산 방식과 구현 범위는 [계산·세금 엔진 안내](TAX_ENGINE.md), PDF 구성은 [PDF 명세](PDF_REPORT_SPEC.md), 커밋별 진행 상태는 [ETF 작업 계획](docs/ETF_IMPLEMENTATION_PLAN.md)을 참고하세요.
+계산 방식은 [계산 명세](docs/CALCULATION_SPEC.md), 증여세 엔진의 구현 범위는 [증여세 엔진 안내](TAX_ENGINE.md), PDF 구성은 [PDF 명세](PDF_REPORT_SPEC.md), 커밋별 진행 상태는 [ETF 작업 계획](docs/ETF_IMPLEMENTATION_PLAN.md)을 참고하세요.
 
 ## 기술 스택
 
