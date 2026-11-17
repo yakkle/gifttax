@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GiftTax - 해외주식 증여 금액 계산기</title>
+    <title>GiftTax - 해외주식·ETF 증여 금액 계산기</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -41,7 +41,7 @@
             </div>
 
             <h1>GiftTax</h1>
-            <p>해외주식 증여 금액 계산기</p>
+            <p>해외주식·ETF 증여 금액 계산기</p>
             <p class="disclaimer-short">본 서비스의 계산 결과는 참고용입니다. 정확한 신고는 세무 전문가와 상담하세요.</p>
             <button id="feedback-open" class="feedback-entry" type="button" aria-controls="feedback-panel" aria-expanded="false">의견 남기기</button>
         </header>
@@ -57,23 +57,37 @@
                 </div>
 
                 <div class="form-group">
-                    <label>증여 주식</label>
-                    <div id="stocks-container">
+                    <label>증여 종목</label>
+                    <div id="stocks-container"></div>
+                    <template id="stock-row-template">
                         <div class="stock-row">
-                            <input type="text" name="ticker" placeholder="종목코드 (예: AAPL)" required>
-                            <input type="number" name="qty" placeholder="수량" min="1" required>
-                            <div class="control-shell control-shell-select">
-                                <select name="currency">
+                            <input type="text" name="ticker" placeholder="티커 (예: AAPL, QQQ)" aria-label="종목 티커" autocomplete="off" maxlength="64" required>
+                            <input type="number" name="qty" placeholder="수량" aria-label="증여 수량" min="1" step="1" required>
+                            <div class="control-shell control-shell-select currency-control">
+                                <select name="currency" aria-label="입력 통화">
                                     <option value="USD" selected>USD</option>
                                     <option value="EUR">EUR</option>
                                     <option value="JPY">JPY</option>
                                     <option value="GBP">GBP</option>
                                 </select>
                             </div>
-                            <button type="button" class="btn-remove" onclick="removeStock(this)">×</button>
+                            <button type="button" class="btn-remove" onclick="removeStock(this)" aria-label="종목 삭제">×</button>
+                            <div class="instrument-info">
+                                <p class="instrument-status" role="status" aria-live="polite"></p>
+                                <button type="button" class="instrument-retry" hidden>다시 확인</button>
+                            </div>
+                            <label class="manual-selection" hidden>상품 유형
+                                <span class="control-shell control-shell-select">
+                                    <select name="asset_type" disabled>
+                                        <option value="">유형 선택</option>
+                                        <option value="stock">주식</option>
+                                        <option value="etf">ETF</option>
+                                    </select>
+                                </span>
+                            </label>
                         </div>
-                    </div>
-                    <button type="button" class="btn-add" onclick="addStock()">+ 주식 추가</button>
+                    </template>
+                    <button type="button" class="btn-add" onclick="addStock()">+ 종목 추가</button>
                 </div>
 
                 <button type="submit" class="btn-submit">계산하기</button>
@@ -95,8 +109,8 @@
                 <div class="download-buttons">
                     <button id="btn-gift-pdf" class="btn-download">계산 증빙 PDF</button>
                     <button id="btn-rate-pdf" class="btn-download">매매기준환율 PDF</button>
-                    <a id="btn-smbs" class="btn-download btn-smbs" href="#" target="_blank" rel="noopener">smbs.biz에서 환율 출력</a>
                 </div>
+                <div id="exchange-rate-links" class="exchange-rate-links" aria-label="통화별 환율 원문 출력"></div>
             </div>
 
             <section class="feedback-section" aria-labelledby="feedback-title">
@@ -172,6 +186,7 @@
         </main>
     </div>
 
+    <script src="instruments.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

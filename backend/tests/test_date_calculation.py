@@ -14,6 +14,8 @@ from backend.services.calculator import (
     validate_calculation_availability,
 )
 
+pytestmark = pytest.mark.usefixtures("legacy_stock_price_fixtures")
+
 
 class TestDateCalculation:
     """증여일 기준 전후 2개월 계산 테스트"""
@@ -89,8 +91,8 @@ class TestCalculatorWithMock:
         """Mock을 사용한 계산 테스트"""
         with (
             patch("backend.services.calculator.scraper.get_stock_prices") as mock_prices,
-            patch("backend.services.calculator.smbs.get_exchange_rate") as mock_rate,
-            patch("backend.services.calculator.smbs.get_exchange_rates") as mock_rates,
+            patch("backend.services.exchange_rates.smbs.get_exchange_rate") as mock_rate,
+            patch("backend.services.exchange_rates.smbs.get_exchange_rates") as mock_rates,
         ):
             mock_prices.return_value = [
                 (date(2025, 9, 8), Decimal("100.00")),

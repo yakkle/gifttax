@@ -3,12 +3,14 @@
 import io
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
-from reportlab.platypus import LongTable, Table, TableStyle
+from reportlab.platypus import LongTable, Paragraph, Table, TableStyle
 
 from backend.pdf.generator.common import (
     BOTTOM_MARGIN,
@@ -24,8 +26,10 @@ from backend.pdf.generator.common import (
     build_longtable_style,
     draw_longtable,
     font,
+    format_exchange_rate,
 )
 from backend.schemas import GiftCalculationResult, StockGiftResult
+from backend.services.exchange_rates import get_exchange_rate_pdf_period
 
 # 컬럼 x 좌표
 COL1_X = LEFT_MARGIN
@@ -53,6 +57,10 @@ def _round2(value: Decimal) -> str:
     """소수 둘째 자리까지 반올림하여 문자열로 반환."""
     rounded = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return f"{rounded:,.2f}"
+
+
+def _format_price(stock: StockGiftResult, value: Decimal) -> str:
+    return format_exchange_rate(value) if stock.asset_type == "etf" else _round2(value)
 
 
 def _format_krw(value: Decimal) -> str:
@@ -96,7 +104,7 @@ def _draw_header(ps: PageState, gift_date: date) -> None:
     c = ps.c
     c.setFont(font(bold=True), 16)
     c.setFillColorRGB(*NORMAL_COLOR)
-    c.drawString(LEFT_MARGIN, ps.y, "해외주식 증여금액 계산 증빙자료")
+    c.drawString(LEFT_MARGIN, ps.y, "해외주식·ETF 증여금액 계산 증빙자료")
     ps.move(9 * mm)
 
     c.setFont(font(), 10)
@@ -129,7 +137,7 @@ def _draw_section_title(ps: PageState, ticker: str, currency: str, idx: int, tot
 
 def _draw_sub_heading(ps: PageState, text: str) -> None:
     """■ 소제목 출력."""
-    ps.ensure_space(12 * mm)
+    ps.ensure_space(30 * mm)
     c = ps.c
     c.setFont(font(bold=True), 11)
     c.setFillColorRGB(*NORMAL_COLOR)
@@ -151,10 +159,13 @@ def _draw_price_table(ps: PageState, stock: StockGiftResult) -> None:
     header = ["날짜", f"종가 ({stock.currency})"]
     rows = [header]
     for point in stock.price_data:
-        rows.append([point.date, _round2(Decimal(point.close))])
+        rows.append([point.date, _format_price(stock, Decimal(point.close))])
 
     table = LongTable(rows, colWidths=col_widths, repeatRows=1)
-    table.setStyle(build_longtable_style(num_data_rows=len(stock.price_data)))
+    style = build_longtable_style(num_data_rows=len(stock.price_data))
+    style.add("TOPPADDING", (0, 0), (-1, -1), 3)
+    style.add("BOTTOMPADDING", (0, 0), (-1, -1), 3)
+    table.setStyle(style)
 
     ps.y = draw_longtable(c, table, x, ps.y, table_width)
     ps.move(2 * mm)
@@ -171,7 +182,8 @@ def _draw_info_table(ps: PageState, rows: list[tuple[str, str]], indent: float =
     table_width = CONTENT_WIDTH - indent
     col_widths = [table_width * 0.35, table_width * 0.65]
 
-    table_data = [[key, value] for key, value in rows]
+    value_style = ParagraphStyle("info_value", fontName=font(), fontSize=10, leading=14)
+    table_data = [[key, Paragraph(escape(value), value_style)] for key, value in rows]
 
     style_cmds = [
         # 키 컬럼: 연회색 배경 + Bold
@@ -218,10 +230,12 @@ def _draw_link(ps: PageState, label: str, url: str, indent: float = 5 * mm) -> N
     c.setFillColorRGB(*LINK_COLOR)
     link_x = LEFT_MARGIN + indent + 38 * mm
     link_y = ps.y
-    c.drawString(link_x, link_y, url)
+    # 긴 조회 파라미터는 클릭 대상에만 보존해 본문 영역 밖으로 넘치지 않게 한다.
+    display_url = url.split("?", 1)[0]
+    c.drawString(link_x, link_y, display_url)
 
     # 클릭 가능 영역 설정
-    link_width = min(len(url) * 4.5, CONTENT_WIDTH - 38 * mm)
+    link_width = min(len(display_url) * 4.5, CONTENT_WIDTH - 38 * mm)
     c.linkURL(url, (link_x, link_y - 2, link_x + link_width, link_y + 8), relative=0)
 
     c.setFillColorRGB(*NORMAL_COLOR)
@@ -230,8 +244,8 @@ def _draw_link(ps: PageState, label: str, url: str, indent: float = 5 * mm) -> N
 
 def _draw_formula_box(ps: PageState, stock: StockGiftResult) -> None:
     """증여금액 계산식을 강조 박스 안에 출력."""
-    avg_disp = _round2(stock.price_average)
-    rate_disp = _round2(stock.exchange_rate)
+    avg_disp = _format_price(stock, stock.valuation_price)
+    rate_disp = format_exchange_rate(stock.exchange_rate)
     krw_disp = _format_krw(stock.gift_amount_krw)
 
     line1 = f"{avg_disp} {stock.currency}  ×  {stock.qty:,}주  ×  {rate_disp} KRW/{stock.currency}"
@@ -283,46 +297,54 @@ def _draw_stock_section(
         [
             ("증여일", gift_date.isoformat()),
             ("종목코드", stock.ticker),
+            ("상품 유형", "ETF" if stock.asset_type == "etf" else "주식"),
             ("수량", f"{stock.qty:,}주"),
         ],
     )
     ps.move(2 * mm)
 
-    # ■ 주가 평균 계산 근거
-    _draw_sub_heading(ps, "주가 평균 계산 근거")
-    period_str = f"{stock.period_start.isoformat()} ~ {stock.period_end.isoformat()}"
-
-    # 평균 산정 기간 테이블과 종가 테이블 첫 몇 행을 같은 페이지에 이어서 배치.
-    info_row_h = 8 * mm  # info_table 1행 대략 높이
-    price_hdr_h = 10 * mm  # 종가 테이블 헤더 + 1행 최소 높이
-    ps.ensure_space(info_row_h + price_hdr_h)
-
-    _draw_info_table(ps, [("평균 산정 기간", period_str)])
-    ps.move(1 * mm)
-
-    _draw_price_table(ps, stock)
-    ps.move(1 * mm)
-
-    _draw_info_table(
-        ps,
-        [
-            ("데이터 건수", f"{len(stock.price_data)}일"),
-            ("평균 종가", f"{_round2(stock.price_average)} {stock.currency}"),
-        ],
-    )
-
-    yahoo_url = _build_yahoo_url(
-        stock.ticker,
-        stock.period_start,
-        stock.period_end + timedelta(days=1),
+    if stock.asset_type == "etf":
+        _draw_sub_heading(ps, "ETF 종가 평가 근거")
+        rows = [
+            ("평가 방식", "증여일 전일 기준 최근 거래일 종가"),
+            ("가격 적용일", stock.price_date.isoformat()),
+            ("적용 종가", f"{_format_price(stock, stock.valuation_price)} {stock.currency}"),
+        ]
+        if stock.price_date_note:
+            rows.append(("이전 거래일 적용 사유", stock.price_date_note))
+        _draw_info_table(ps, rows)
+    else:
+        _draw_sub_heading(ps, "주가 평균 계산 근거")
+        period_str = f"{stock.period_start.isoformat()} ~ {stock.period_end.isoformat()}"
+        ps.ensure_space(25 * mm)
+        _draw_info_table(ps, [("평균 산정 기간", period_str)])
+        ps.move(1 * mm)
+        _draw_price_table(ps, stock)
+        ps.move(1 * mm)
+        # 마지막 종가 행 뒤에서 평균·환율·계산식이 조각나지 않게 공간을 확보한다.
+        if ps.need_new_page(105 * mm):
+            ps.new_page()
+            _draw_sub_heading(ps, f"{stock.ticker} 평가 요약")
+        _draw_info_table(
+            ps,
+            [
+                ("데이터 건수", f"{len(stock.price_data)}일"),
+                ("평균 종가", f"{_round2(stock.price_average)} {stock.currency}"),
+            ],
+        )
+    if stock.quote_currency in {"GBp", "GBX"}:
+        _draw_info_table(ps, [("시세 단위 환산", f"{stock.quote_currency} 종가 × 0.01 = GBP 종가")])
+    yahoo_url = stock.price_source_url or _build_yahoo_url(
+        stock.ticker, stock.period_start, stock.period_end + timedelta(days=1),
     )
     _draw_link(ps, "데이터 출처", yahoo_url)
     ps.move(2 * mm)
 
     # ■ 환율 정보
     _draw_sub_heading(ps, "환율 정보")
-    rate_date_str = f"{stock.exchange_rate_date.isoformat()} (증여일 직전 영업일)"
-    rate_str = f"{_round2(stock.exchange_rate)} KRW/{stock.currency}"
+    rate_basis = "증여일 고시" if stock.exchange_rate_date == gift_date else "증여일 이전 고시일 대체"
+    rate_date_str = f"{stock.exchange_rate_date.isoformat()} ({rate_basis})"
+    rate_str = f"{format_exchange_rate(stock.exchange_rate)} KRW/{stock.currency}"
     _draw_info_table(
         ps,
         [
@@ -336,6 +358,7 @@ def _draw_stock_section(
     ps.move(2 * mm)
 
     # ■ 증여금액 계산
+    ps.ensure_space(32 * mm)
     _draw_sub_heading(ps, "증여금액 계산")
     _draw_formula_box(ps, stock)
 
@@ -346,9 +369,10 @@ def _draw_total_section(ps: PageState, result: GiftCalculationResult) -> None:
     table_width = CONTENT_WIDTH - indent
 
     # 구분선
-    ps.ensure_space(10 * mm)
+    ps.ensure_space((30 + 8 * (len(result.stocks) + 2)) * mm)
     c = ps.c
     c.setLineWidth(0.5)
+    c.setStrokeColor(TABLE_GRID_COLOR)
     c.line(LEFT_MARGIN, ps.y, PAGE_WIDTH - RIGHT_MARGIN, ps.y)
     ps.move(6 * mm)
 
@@ -433,9 +457,10 @@ def generate_pdf_gift_calculation(
 
     total = len(result.stocks)
     for idx, stock in enumerate(result.stocks, start=1):
+        if idx > 1:
+            ps.new_page()
         # 환율 출처 기간: actual_rate_date ±1일
-        rate_period_start = stock.exchange_rate_date - timedelta(days=1)
-        rate_period_end = stock.exchange_rate_date + timedelta(days=1)
+        rate_period_start, rate_period_end = get_exchange_rate_pdf_period(stock.exchange_rate_date)
 
         _draw_stock_section(
             ps,
